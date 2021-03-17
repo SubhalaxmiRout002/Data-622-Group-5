@@ -1,0 +1,51 @@
+---
+title: "DATA622_HW3"
+author: "Group 5 - Don (Geeth) Padmaperuma,Subhalaxmi Rout, Isabel R., Magnus Skonberg"
+date: "4/9/2021"
+output: 
+ html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r library, comment=FALSE, warning=FALSE, message=FALSE }
+library(tidyverse)
+library(caret)
+library(palmerpenguins)
+library(e1071) 
+library(caTools)
+library(ggplot2)
+library(GGally)
+library(ggplot2) 
+library(MASS) 
+library(mvtnorm)
+```
+
+# K-nearest neighbor (KNN)
+1. Please use K-nearest neighbor (KNN) algorithm to predict the species variable. Please
+be sure to walk through the steps you took. (40 points)
+
+# Decision Trees
+2. Please use the attached dataset on loan approval status to predict loan approval using
+Decision Trees. Please be sure to conduct a thorough exploratory analysis to start the
+task and walk us through your reasoning behind all the steps you are taking. (40 points)
+
+# Random Forests
+3. Using the same dataset on Loan Approval Status, please use Random Forests to predict
+on loan approval status. Again, please be sure to walk us through the steps you took to
+get to your final model. (50 points)
+
+# Gradient Boosting
+4. Using the Loan Approval Status data, please use Gradient Boosting to predict on the
+loan approval status. Please use whatever boosting approach you deem appropriate;
+but please be sure to walk us through your steps. (50 points)
+
+# Model Comparison (Decision Trees vs. Random Forests vs. Gradient Boosting)
+5. Model performance: please compare the models you settled on for problem # 2 – 4. Comment on their relative performance. Which one would you prefer the most? Why? (20 points)
