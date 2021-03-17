@@ -26,26 +26,133 @@ library(GGally)
 library(ggplot2) 
 library(MASS) 
 library(mvtnorm)
+library(class)
+library(dplyr)
+library(rpart)
 ```
 
-# K-nearest neighbor (KNN)
-1. Please use K-nearest neighbor (KNN) algorithm to predict the species variable. Please
-be sure to walk through the steps you took. (40 points)
+# Penguin Data Set
 
-# Decision Trees
+## K-nearest neighbor (KNN)
+1. Please use K-nearest neighbor (KNN) algorithm to predict the species variable. Please be sure to walk through the steps you took. (40 points)
+```{r}
+# Loading & Tidy data 
+penguin_measurements <- penguins %>% drop_na() %>% dplyr::select(species, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g)
+head(penguin_measurements%>% as.data.frame())
+glimpse(penguin_measurements)
+```
+
+```{r}
+# Splitting data into train and test data 
+set.seed(123) 
+training.individuals <- penguin_measurements$species %>% createDataPartition(p = 0.8, list = FALSE) 
+train_cl <- penguin_measurements[training.individuals, ] 
+test_cl <- penguin_measurements[-training.individuals, ] 
+
+# Feature Scaling 
+train_scale <- scale(train_cl[, 2:5]) 
+test_scale <- scale(test_cl[, 2:5]) 
+
+# Fitting KNN Model to training dataset 
+classifier_knn <- knn(train = train_scale, 
+					test = test_scale, 
+					cl = train_cl$species, 
+					k = 1) 
+classifier_knn 
+
+# Confusion Matrix 
+cm <- table(test_cl$species, classifier_knn) 
+cm 
+
+# Model Evaluation - Choosing K Calculate out of Sample error 
+misClassError <- mean(classifier_knn != test_cl$species) 
+print(paste('Accuracy =', 1-misClassError)) 
+
+# K = 3 
+classifier_knn <- knn(train = train_scale, 
+					test = test_scale, 
+					cl = train_cl$species, 
+					k = 3) 
+misClassError <- mean(classifier_knn != test_cl$species) 
+print(paste('Accuracy =', 1-misClassError)) 
+
+
+# K = 15 
+classifier_knn <- knn(train = train_scale, 
+					test = test_scale, 
+					cl = train_cl$species, 
+					k = 15) 
+misClassError <- mean(classifier_knn != test_cl$species) 
+print(paste('Accuracy =', 1-misClassError)) 
+```
+
+# Loan Approval Data Set
+
+```{r}
+# Loading & Tidy data 
+#data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/Loan_approval.csv")
+data <-read.csv("C:\\Users\\iramesa\\Desktop\\MSDS\\DATA622\\Loan_approval.csv",header=T,stringsAsFactors=FALSE)
+loan <- data %>% drop_na()
+```
+
+```{r}
+# Exploratory Analysis
+glimpse(loan)
+summary(loan)
+```
+
+## Decision Trees
 2. Please use the attached dataset on loan approval status to predict loan approval using
 Decision Trees. Please be sure to conduct a thorough exploratory analysis to start the
 task and walk us through your reasoning behind all the steps you are taking. (40 points)
 
-# Random Forests
+```{r}
+#Split data into training and testing sets
+set.seed(123)
+sample_data = sample.split(loan, SplitRatio = 0.75)
+train_data <- subset(loan, sample_data == TRUE)
+test_data <- subset(loan, sample_data == FALSE)
+
+```
+
+
+```{r}
+#Plot our Decision Tree
+rtree <- rpart(survived ~ ., sample_data$train_data)
+rpart.plot(rtree)
+```
+
+
+## Random Forests
 3. Using the same dataset on Loan Approval Status, please use Random Forests to predict
 on loan approval status. Again, please be sure to walk us through the steps you took to
 get to your final model. (50 points)
+```{r}
 
-# Gradient Boosting
+```
+
+
+## Gradient Boosting
 4. Using the Loan Approval Status data, please use Gradient Boosting to predict on the
 loan approval status. Please use whatever boosting approach you deem appropriate;
 but please be sure to walk us through your steps. (50 points)
 
-# Model Comparison (Decision Trees vs. Random Forests vs. Gradient Boosting)
+```{r}
+Boston.boost=gbm(medv ~ . ,data = Boston[train,],distribution = "gaussian",n.trees = 10000,
+                  shrinkage = 0.01, interaction.depth = 4)
+Boston.boost
+
+summary(Boston.boost) #Summary gives a table of Variable Importance and a plot of Variable Importance
+```
+
+
+## Model Comparison (Decision Trees vs. Random Forests vs. Gradient Boosting)
 5. Model performance: please compare the models you settled on for problem # 2 – 4. Comment on their relative performance. Which one would you prefer the most? Why? (20 points)
+
+# References
+https://www.geeksforgeeks.org/k-nn-classifier-in-r-programming/
+https://www.geeksforgeeks.org/decision-tree-for-regression-in-r-programming/
+https://data-flair.training/blogs/r-decision-trees/
+https://datascienceplus.com/gradient-boosting-in-r/
+https://appsilon.com/r-xgboost/
+
