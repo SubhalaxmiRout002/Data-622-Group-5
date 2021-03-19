@@ -1,4 +1,4 @@
----
+--
 title: "DATA622_HW3"
 author: "Group 5 - Don (Geeth) Padmaperuma,Subhalaxmi Rout, Isabel R., Magnus Skonberg"
 date: "4/9/2021"
@@ -29,6 +29,10 @@ library(mvtnorm)
 library(class)
 library(dplyr)
 library(rpart)
+library(rpart.plot)
+library(party)
+library(randomForest)
+library(gbm)
 ```
 
 # Penguin Data Set
@@ -90,12 +94,12 @@ print(paste('Accuracy =', 1-misClassError))
 
 ```{r}
 # Loading & Tidy data 
-#data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/Loan_approval.csv")
-data <-read.csv("C:\\Users\\iramesa\\Desktop\\MSDS\\DATA622\\Loan_approval.csv",header=T,stringsAsFactors=FALSE)
+data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/Loan_approval.csv")
+#data <-read.csv("C:\\Users\\iramesa\\Desktop\\MSDS\\DATA622\\Loan_approval.csv",header=T,stringsAsFactors=FALSE)
 loan <- data %>% drop_na()
 ```
 
-```{r}
+```{r loan data}
 # Exploratory Analysis
 glimpse(loan)
 summary(loan)
@@ -112,47 +116,84 @@ set.seed(123)
 sample_data = sample.split(loan, SplitRatio = 0.75)
 train_data <- subset(loan, sample_data == TRUE)
 test_data <- subset(loan, sample_data == FALSE)
-
 ```
 
+```{r}
+#Class Method
+prop.table(table(loan$Loan_Status))
+fit <- rpart(Loan_Status~., data = loan, method = 'class')
+rpart.plot(fit, extra = 106)
+```
 
 ```{r}
-#Plot our Decision Tree
-rtree <- rpart(survived ~ ., sample_data$train_data)
-rpart.plot(rtree)
+fit <- rpart(Loan_Status~., data = loan, method = 'class')
+predict_unseen <-predict(fit, loan, type ='class')
+table_mat <-table(loan$Loan_Status, predict_unseen)
+table_mat
+accuracy_Test <-sum(diag(table_mat))/sum(table_mat)
+print(paste('Accuracy for test', accuracy_Test))
 ```
 
 
 ## Random Forests
-3. Using the same dataset on Loan Approval Status, please use Random Forests to predict
-on loan approval status. Again, please be sure to walk us through the steps you took to
-get to your final model. (50 points)
+3. Using the same dataset on Loan Approval Status, please use Random Forests to predict on loan approval status. Again, please be sure to walk us through the steps you took to get to your final model. (50 points)
 ```{r}
+#Create the forest
+output.forest <-randomForest(Loan_Status~ Gender + Married + Dependents + ApplicantIncome + LoanAmount + Loan_Amount_Term + Credit_History + Property_Area, data = loan)
 
+#View the forest results
+print(output.forest)
+
+#Importance of each predictor
+print(importance(output.forest, type=2))
 ```
+From the random forest shown above we can conclude that Credit_History, Applicant_Income and Loan_Amount are the most important factors when deciding if someone will be approved for a loan or not. The model has a 17.96% error which means we can predict with 82.04% accuracy.
+
+```{r randomforestplot}
+plot(output.forest)
+varImpPlot(output.forest)
+```
+
+```{r randomforestprediction}
+new <- data.frame(Gender='Male', Married='Yes', Dependents=0, ApplicantIncome=2000, LoanAmount=300, Loan_Amount_Term=360, Credit_History=1, Property_Area='Urban')
+predict(output.forest, newdata =new)
+```
+
 
 
 ## Gradient Boosting
-4. Using the Loan Approval Status data, please use Gradient Boosting to predict on the
-loan approval status. Please use whatever boosting approach you deem appropriate;
-but please be sure to walk us through your steps. (50 points)
+4. Using the Loan Approval Status data, please use Gradient Boosting to predict on the loan approval status. Please use whatever boosting approach you deem appropriate; but please be sure to walk us through your steps. (50 points)
 
 ```{r}
-Boston.boost=gbm(medv ~ . ,data = Boston[train,],distribution = "gaussian",n.trees = 10000,
-                  shrinkage = 0.01, interaction.depth = 4)
-Boston.boost
+#Separating training and test data
+train=sample(1:261, size = 261)
+loan.boost=gbm(Loan_Status ~ . ,data = loan[train,],distribution = "gaussian",n.trees = 10000, shrinkage = 0.01, interaction.depth = 4)
+loan.boost
 
-summary(Boston.boost) #Summary gives a table of Variable Importance and a plot of Variable Importance
+#Summary gives a table of Variable Importance and a plot of Variable Importance
+summary(loan.boost)
 ```
 
+```{r gradientboostplot}
+plot(loan.boost, i="LoanAmount")
+plot(loan.boost, i="ApplicantIncome")
+```
+
+```{r}
+cor(loan$LoanAmount, loan$Credit_History)
+cor(loan$ApplicantIncome, loan$Credit_History)
+```
 
 ## Model Comparison (Decision Trees vs. Random Forests vs. Gradient Boosting)
 5. Model performance: please compare the models you settled on for problem # 2 – 4. Comment on their relative performance. Which one would you prefer the most? Why? (20 points)
 
 # References
 https://www.geeksforgeeks.org/k-nn-classifier-in-r-programming/
+https://guru99.com/r-decision-trees.html/
 https://www.geeksforgeeks.org/decision-tree-for-regression-in-r-programming/
 https://data-flair.training/blogs/r-decision-trees/
+https://tutorialspoint.com/r/r_random_forest.htm/
+https://statology.org/random-forest-in-r/
 https://datascienceplus.com/gradient-boosting-in-r/
 https://appsilon.com/r-xgboost/
 
