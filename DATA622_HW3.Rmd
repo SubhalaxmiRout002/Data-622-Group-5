@@ -1,7 +1,7 @@
---
+---
 title: "DATA622_HW3"
-author: "Group 5 - Don (Geeth) Padmaperuma,Subhalaxmi Rout, Isabel R., Magnus Skonberg"
-date: "4/9/2021"
+author: "Group 5"
+date: "`r Sys.Date()`" # Due 4/9/2021
 output: 
  html_document:
     toc: true
@@ -10,6 +10,15 @@ output:
     theme: flatly
     highlight: tango
 ---
+
+## Authorship
+
+**Group 5:** 
+
+* Don (Geeth) Padmaperuma,
+* Subhalaxmi Rout, 
+* Isabel Ramesar, and
+* Magnus Skonberg
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
@@ -35,21 +44,64 @@ library(randomForest)
 library(gbm)
 ```
 
-# Penguin Data Set
+# Background
 
-## K-nearest neighbor (KNN)
-1. Please use K-nearest neighbor (KNN) algorithm to predict the species variable. Please be sure to walk through the steps you took. (40 points)
+The purpose of this assignment was to explore classification via K-nearest neighbors, Decision Trees, Random Forests, and Gradient Boosting.
+
+## Classification
+
+Classification is a supervised machine learning technique whose main purpose is to identify the category/class of provided input data.  The model that is generated is trained using labeled data (hence the label "supervised") and then use the trained model is used to predict our discrete output. 
+
+## Our Approach
+
+First, we're going to predict `species` of penguin using the KNN algorithm.
+
+Then we're going to compare and contrast `loan approval status` predictions for Decision Trees, Random Forests and Gradient Boosting.
+
+................................................................................
+
+
+# Palmer Penguins Data
+
+Being that we've worked with the penguins dataset twice before, we perform *light EDA* to re-familiarize ourselves with the data prior to applying the KNN algorithm to it.
+
+We load in the data, pre-process it, verify the first 6 observations, and utilize the built-in glimpse() function to gain insight into the dimensions, variable characteristics, and value range:
+
 ```{r}
-# Loading & Tidy data 
-penguin_measurements <- penguins %>% drop_na() %>% dplyr::select(species, bill_length_mm, bill_depth_mm, flipper_length_mm, body_mass_g)
+#Load and tidy data 
+penguin_measurements <- penguins %>% drop_na() %>%
+    dplyr::select(species, bill_length_mm, bill_depth_mm,
+                  flipper_length_mm, body_mass_g)
+
 head(penguin_measurements%>% as.data.frame())
 glimpse(penguin_measurements)
 ```
 
+Once we've dropped NA values and selected pertinent variables, we end up with a 333 observation x 5 variable dataframe with:
+
+* `species`, a categorical variable of type factor, as our dependent variable and
+* `bill_length_mm`, `bill_depth_mm`, `flipper_length_mm`, and `body_mass_g`, all quantitative variables of type dbl or int, as our independent variables.
+
+
+# 1. K-Nearest Neighbors (KNN)
+
+[insert background on KNN]
+
+The KNN algorithm hinges on the idea that similar data will be near one another. When applying KNN, the distance between data points are used to classify data. Those nearer one another are "batched" together. The amount of batches we see and the distance between points is determined by the k value we select:
+
+* Smaller k --> fewer batches and larger distance between "like" points.
+* Larger k --> more batches and smaller distance between "like" points. 
+
+Due to the simplicity of calculations involved and ease of interpretability of the result, KNN is a popular classifier. For our purposes, we're going to apply the K-nearest neighbor algorithm to the Palmer penguins dataset to predict the `species` variable.
+
+We perform an 80-20 split, center and scale our independent variables via built-in scale() function, and fit the KNN model to our training dataset:
+
 ```{r}
 # Splitting data into train and test data 
 set.seed(123) 
-training.individuals <- penguin_measurements$species %>% createDataPartition(p = 0.8, list = FALSE) 
+training.individuals <- penguin_measurements$species %>%
+    createDataPartition(p = 0.8, list = FALSE) 
+
 train_cl <- penguin_measurements[training.individuals, ] 
 test_cl <- penguin_measurements[-training.individuals, ] 
 
@@ -62,8 +114,15 @@ classifier_knn <- knn(train = train_scale,
 					test = test_scale, 
 					cl = train_cl$species, 
 					k = 1) 
-classifier_knn 
 
+#classifier_knn #verify output
+```
+
+Performing an 80-20 split allocates 80% of our data for training the model and 20% of our data for testing it. Whereas applying the scale() function centers and scales our independent variables to reduce bias and improve predictive accuracy. *Although, we start with k=1 (neighbors) for our KNN model fit here. We'll vary this value later to interpret its impact on predictive accuracy.*
+
+Once our model has been fit, we assess its accuracy visualizing with a confusion matrix and then calculating the corresponding accuracy based on these values:
+
+```{r}
 # Confusion Matrix 
 cm <- table(test_cl$species, classifier_knn) 
 cm 
@@ -71,33 +130,66 @@ cm
 # Model Evaluation - Choosing K Calculate out of Sample error 
 misClassError <- mean(classifier_knn != test_cl$species) 
 print(paste('Accuracy =', 1-misClassError)) 
+```
 
+In the confusion matrix above, rows represent actual values while columns represent predicted values. With this in mind, we see that our test set results are:
+
+* True Positive Result (TPR): 61 / 65 = 93.8%
+* False Positive Result (FPR): 4 / 65 = 6.2%
+
+Although our KNN classifier mis-predicted an Adelie as a Chinstrap and 3 Chinstraps as Adelies, it predicted Gentoo with 100% accuracy and produced a relatively favorable **93.8% accuracy**.
+
+Let's explore the impact of increasing our k value to 3:
+
+```{r}
 # K = 3 
 classifier_knn <- knn(train = train_scale, 
 					test = test_scale, 
 					cl = train_cl$species, 
 					k = 3) 
 misClassError <- mean(classifier_knn != test_cl$species) 
-print(paste('Accuracy =', 1-misClassError)) 
+print(paste('Accuracy (k=3):', 1-misClassError)) 
 
 
+```
+
+We don't visualize the output with a confusion matrix and instead calculate the sample error and just subtract this value from 1 to produce a predictive **accuracy of 95.4%**. A 1.6% improvement over our KNN classifier with k=1.
+
+We, once again, explore the impact of increasing our k value. This time we increase it to 15:
+
+```{r}
 # K = 15 
 classifier_knn <- knn(train = train_scale, 
 					test = test_scale, 
 					cl = train_cl$species, 
 					k = 15) 
 misClassError <- mean(classifier_knn != test_cl$species) 
-print(paste('Accuracy =', 1-misClassError)) 
+print(paste('Accuracy (k=15):', 1-misClassError)) 
 ```
+
+With k=15 **our predictive accuracy climbs to 96.9%.** A 1.5% improvement over our KNN classifier with k=3. In our case, each increase in k value improved our predictive accuracy. This is not always the case though ... 
+
+When choosing k values, smaller values are generally less computationally expensive *yet* they're also noisier and less accurate. Larger values, on the other hand, can result in smoother decision boundaries and a lower variance *yet* they increase the bias and processing demands. 
+
+Thus, more often than not we seek the "sweet spot". A k value that's not too large and not too small. Our choice in value is thus impacted by the number of observations, as well as the characteristics of the data we're classifying.
+
+................................................................................
+
 
 # Loan Approval Data Set
 
+Being that we haven't worked with the loan approval dataset before, our exploratory data analysis (EDA) will be more in-depth. The depth will allow for greater understanding of the data at hand prior to applying a Decision Tree, Random Forest, and Gradient Boosting model to it.
+
+We load in the data and observe the first 6 observations of our dataset:
+
 ```{r}
 # Loading & Tidy data 
-data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/Loan_approval.csv")
-#data <-read.csv("C:\\Users\\iramesa\\Desktop\\MSDS\\DATA622\\Loan_approval.csv",header=T,stringsAsFactors=FALSE)
-loan <- data %>% drop_na()
+data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/Loan_approval.csv", stringsAsFactors = TRUE)
+#loan <- data %>% drop_na() #MS: doesn't appear that there are NA values
+head(loan)
 ```
+
+The output above provides some context regarding the format of our data, but we can take this understanding a bit further by utilizing R's built-in glimpse() and summary() functions:
 
 ```{r loan data}
 # Exploratory Analysis
@@ -105,10 +197,48 @@ glimpse(loan)
 summary(loan)
 ```
 
-## Decision Trees
-2. Please use the attached dataset on loan approval status to predict loan approval using
-Decision Trees. Please be sure to conduct a thorough exploratory analysis to start the
-task and walk us through your reasoning behind all the steps you are taking. (40 points)
+We can refer to the output above for insight into the dimensions, variable characteristics, and value range.
+
+We're dealing with a 529 observations x 13 variable dataframe with:
+
+* `Loan_Status`, a categorical, character-based variable, as our dependent variable,
+* `ApplicantIncome`, `CoApplicantIncome`,`LoanAmount`, `Loan_Amount_Term`, and `Credit_History`, all quantitative variables of type dbl or int, as independent variables, and
+* `Loan_ID`, `Gender`, `Married`, `Dependents`, `Education`, `Self_Employed`, `Property_Area`, and `Loan_Status`, all categorical, character-based variables, as independent variables.
+
+From a quick glance a number of these variables appear to be irrelevant for our purposes. As a next step, we’ll visualize, explore further, and identify features that carry promise vs. those that don't.
+
+### LEFT OFF HERE [MS 3.20.21]
+
+We start by exploring the correlation matrix:
+
+```{r}
+#Correlation matrix
+library(corrplot)
+loan_corr <- loan %>%
+    select_if(is.numeric) %>%
+    drop_na() %>%
+    cor()
+
+#loan_corr
+corrplot(loan_corr)
+```
+
+We start by exploring variable distributions vs. our dependent variable `Loan_Status`:
+
+```{r eda, eval = T}
+#Histograms for all variables
+loan %>%
+  keep(is.numeric) %>% 
+  gather() %>% 
+  ggplot(aes(value)) +
+    facet_wrap(~ key, scales = "free") +
+    geom_histogram()
+```
+
+
+# 2. Decision Trees
+
+2. Please use the attached dataset on loan approval status to predict loan approval using Decision Trees. Please be sure to conduct a thorough exploratory analysis to start the task and walk us through your reasoning behind all the steps you are taking. (40 points)
 
 ```{r}
 #Split data into training and testing sets
@@ -139,24 +269,24 @@ print(paste('Accuracy for test', accuracy_Test))
 3. Using the same dataset on Loan Approval Status, please use Random Forests to predict on loan approval status. Again, please be sure to walk us through the steps you took to get to your final model. (50 points)
 ```{r}
 #Create the forest
-output.forest <-randomForest(Loan_Status~ Gender + Married + Dependents + ApplicantIncome + LoanAmount + Loan_Amount_Term + Credit_History + Property_Area, data = loan)
+#output.forest <-randomForest(Loan_Status~ Gender + Married + Dependents + ApplicantIncome + LoanAmount + Loan_Amount_Term + Credit_History + Property_Area, data = loan)
 
 #View the forest results
-print(output.forest)
+#print(output.forest)
 
 #Importance of each predictor
-print(importance(output.forest, type=2))
+#print(importance(output.forest, type=2))
 ```
 From the random forest shown above we can conclude that Credit_History, Applicant_Income and Loan_Amount are the most important factors when deciding if someone will be approved for a loan or not. The model has a 17.96% error which means we can predict with 82.04% accuracy.
 
 ```{r randomforestplot}
-plot(output.forest)
-varImpPlot(output.forest)
+#plot(output.forest)
+#varImpPlot(output.forest)
 ```
 
 ```{r randomforestprediction}
-new <- data.frame(Gender='Male', Married='Yes', Dependents=0, ApplicantIncome=2000, LoanAmount=300, Loan_Amount_Term=360, Credit_History=1, Property_Area='Urban')
-predict(output.forest, newdata =new)
+#new <- data.frame(Gender='Male', Married='Yes', Dependents=0, ApplicantIncome=2000, LoanAmount=300, Loan_Amount_Term=360, Credit_History=1, Property_Area='Urban')
+#predict(output.forest, newdata =new)
 ```
 
 
@@ -166,22 +296,22 @@ predict(output.forest, newdata =new)
 
 ```{r}
 #Separating training and test data
-train=sample(1:261, size = 261)
-loan.boost=gbm(Loan_Status ~ . ,data = loan[train,],distribution = "gaussian",n.trees = 10000, shrinkage = 0.01, interaction.depth = 4)
-loan.boost
+#train=sample(1:261, size = 261)
+#loan.boost=gbm(Loan_Status ~ . ,data = loan[train,],distribution = "gaussian",n.trees = 10000, shrinkage = 0.01, interaction.depth = 4)
+#loan.boost
 
 #Summary gives a table of Variable Importance and a plot of Variable Importance
-summary(loan.boost)
+#summary(loan.boost)
 ```
 
 ```{r gradientboostplot}
-plot(loan.boost, i="LoanAmount")
-plot(loan.boost, i="ApplicantIncome")
+#plot(loan.boost, i="LoanAmount")
+#plot(loan.boost, i="ApplicantIncome")
 ```
 
 ```{r}
-cor(loan$LoanAmount, loan$Credit_History)
-cor(loan$ApplicantIncome, loan$Credit_History)
+#cor(loan$LoanAmount, loan$Credit_History)
+#cor(loan$ApplicantIncome, loan$Credit_History)
 ```
 
 ## Model Comparison (Decision Trees vs. Random Forests vs. Gradient Boosting)
