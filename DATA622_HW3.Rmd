@@ -42,6 +42,9 @@ library(rpart.plot)
 library(party)
 library(randomForest)
 library(gbm)
+library(mice)
+library(plyr)
+library(gridExtra)
 ```
 
 # Background
@@ -176,64 +179,185 @@ Thus, more often than not we seek the "sweet spot". A k value that's not too lar
 ................................................................................
 
 
-# Loan Approval Data Set
+# Loan Approval Data
 
 Being that we haven't worked with the loan approval dataset before, our exploratory data analysis (EDA) will be more in-depth. The depth will allow for greater understanding of the data at hand prior to applying a Decision Tree, Random Forest, and Gradient Boosting model to it.
 
-We load in the data and observe the first 6 observations of our dataset:
+We load in the data, replace empty strings with NAs, and observe the first 6 observations of our dataset:
 
 ```{r}
-# Loading & Tidy data 
-data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/Loan_approval.csv", stringsAsFactors = TRUE)
-#loan <- data %>% drop_na() #MS: doesn't appear that there are NA values
-head(loan)
+#Load in data
+loan <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/Loan_approval.csv", stringsAsFactors = TRUE)
+
+loan[loan==""] <- NA #replace empty strings with NAs
+#head(loan) #verify 1st 6 observations
 ```
 
-The output above provides some context regarding the format of our data, but we can take this understanding a bit further by utilizing R's built-in glimpse() and summary() functions:
+The head() function provides some context regarding the format of our data. R's built-in glimpse() and summary() functions provide further insight:
 
-```{r loan data}
-# Exploratory Analysis
+```{r}
+#Light EDA
 glimpse(loan)
 summary(loan)
 ```
 
-We can refer to the output above for insight into the dimensions, variable characteristics, and value range.
 
-We're dealing with a 529 observations x 13 variable dataframe with:
+We're dealing with a 614 observation x 13 variable dataframe with:
 
 * `Loan_Status`, a categorical, character-based variable, as our dependent variable,
 * `ApplicantIncome`, `CoApplicantIncome`,`LoanAmount`, `Loan_Amount_Term`, and `Credit_History`, all quantitative variables of type dbl or int, as independent variables, and
-* `Loan_ID`, `Gender`, `Married`, `Dependents`, `Education`, `Self_Employed`, `Property_Area`, and `Loan_Status`, all categorical, character-based variables, as independent variables.
+* `Loan_ID`, `LoanGender`, `Married`, `Dependents`, `Education`, `Self_Employed`, `Property_Area`, and `Loan_Status`, all categorical, character-based variables, as independent variables.
 
-From a quick glance a number of these variables appear to be irrelevant for our purposes. As a next step, we’ll visualize, explore further, and identify features that carry promise vs. those that don't.
+From the above output, we also get an idea of proportions for our variables of type factor (ie.`Gender`: 489 male, 112 female applicants) which we can explore in greater depth later.
 
-### LEFT OFF HERE [MS 3.20.21]
-
-We start by exploring the correlation matrix:
+Of the above variables, we can see that `Loan_ID` does not appear to provide much insight. We'll drop this variable, explore a clearer visualization of NA counts and then deal with our NA values: 
 
 ```{r}
-#Correlation matrix
-library(corrplot)
-loan_corr <- loan %>%
-    select_if(is.numeric) %>%
-    drop_na() %>%
-    cor()
+loan <- subset(loan, select = -c(1) ) #drop Loan_ID from consideration
 
-#loan_corr
-corrplot(loan_corr)
+colSums(is.na(loan)) #visualize NA counts
 ```
 
-We start by exploring variable distributions vs. our dependent variable `Loan_Status`:
+7 / 12 variables have NA values and 3 of these variables have more than 20 NA values (a relatively significant margin).
+
+We *can* drop these values but dropping values means losing valuable observations and thus we elect to impute instead. From the mice library, we impute using the **pmm** method (predictive mean matching):
+
+```{r}
+#relabel Dependents "3+" value as "3" so that we can impute values
+loan$Dependents <- revalue(loan$Dependents, c("3+"="3"))
+
+#apply predictive mean matching to loan data
+loan <- mice(loan, m = 1, method = "pmm", seed = 500)
+loan <- mice::complete(loan, 1)
+```
+
+We re-assign the "3+" value of the `Dependents` variable to provide consistent leveling and enable **pmm** and then we actually apply **pmm**.
+
+Predictive mean matching calculates the predicted value for our target variable, and, for missing values, forms a small set of “candidate donors” from the complete cases that are closest to the predicted value for our missing entry. Donors are then randomly chosen from candidates and imputed where values were once missing. *To apply pmm we assume that the distribution is the same for missing cells as it is for observed data, and thus, the approach may be more limited when the % of missing values is higher.*
+
+Once we've imputed missing values into our loan dataset and returned the data in proper form, we verify whether our operation was successful:
+
+```{r}
+#verify absence of NA values in the dataset
+colSums(is.na(loan))
+```
+
+Imputation was a success and thus our data pre-processing has been completed. We can proceed with our exploratory data analysis (EDA).
+
+To identify features that carry promise vs. those that may not, we consider a correlation matrix for our numeric variables: 
+
+```{r, messages=FALSE}
+#Correlation matrix for numeric variables
+library(corrplot)
+
+#Loan Approved correlation
+loan_corr_y <- loan %>%
+    filter(Loan_Status == "Y") %>%
+    select_if(is.numeric) %>%
+    cor()
+
+corrplot(loan_corr_y, title="Loan Approved")
+
+#Loan Rejected correlation
+loan_corr_n <- loan %>%
+    filter(Loan_Status == "N") %>%
+    select_if(is.numeric) %>%
+    cor()
+
+corrplot(loan_corr_n, title="Loan Rejected")
+```
+
+When we consider loan approval and rejection, `LoanAmount` and `ApplicantIncome` have a relatively strong correlation. For loan rejection, `LoanAmount` also appears to have moderate correlation with `CoapplicantIncome`. Remaining features do not have strong correlation and thus we'll only note the aforementioned relationships for consideration for *possible* feature removal later. 
+
+We move on to explore histograms for our numeric variables:
 
 ```{r eda, eval = T}
 #Histograms for all variables
 loan %>%
-  keep(is.numeric) %>% 
-  gather() %>% 
-  ggplot(aes(value)) +
-    facet_wrap(~ key, scales = "free") +
-    geom_histogram()
+    keep(is.numeric) %>%
+    subset(select = -c(4,5)) %>% #drop CreditHistory, Loan_Amount_Term
+    gather() %>% 
+    ggplot(aes(value)) +
+        facet_wrap(~ key, scales = "free", ncol=1) +
+        geom_histogram(bins=90,color="darkblue", fill="lightblue")
+
 ```
+From the above figures we observe that:
+
+* `ApplicantIncome` and `LoanAmount` appear to be right skewed normal with a number of noteworthy outliers, and
+* `CoapplicantIncome` has a peak at 0 joined with an otherwise right skewed normal distribution.
+
+All three numeric variables would require normalization for modeling consideration.
+
+Next, we explore our categorical variables:
+
+```{r, message=FALSE}
+#convert CreditHistory to type factor
+loan$Credit_History <- factor(loan$Credit_History)
+#levels(loan$Credit_History) #verify
+
+#MS: if there's a way to facet wrap this / automate, would be preferred:
+
+#Histograms for all categorical variables
+##Gender
+p1 <- loan %>% 
+    dplyr::select(1,12) %>% #dplyr::select(1:5,11:12)
+    group_by(,Loan_Status) %>%
+    #gather() %>%
+    count() %>%
+    
+    ggplot(aes(x=Gender, y=freq, fill=Loan_Status)) + 
+        #facet_wrap(~ key) +
+        geom_bar(stat='identity', position="stack")
+
+##Married
+p2 <- loan %>% dplyr::select(2,12) %>% group_by(,Loan_Status) %>% count() %>%
+    ggplot(aes(x=Married, y=freq, fill=Loan_Status)) + 
+        geom_bar(stat='identity', position="stack")
+
+##Dependents
+p3 <- loan %>% dplyr::select(3,12) %>% group_by(,Loan_Status) %>% count() %>%
+    ggplot(aes(x=Dependents, y=freq, fill=Loan_Status)) + 
+        geom_bar(stat='identity', position="stack")
+
+##Education
+p4 <- loan %>% dplyr::select(4,12) %>% group_by(,Loan_Status) %>% count() %>%
+    ggplot(aes(x=Education, y=freq, fill=Loan_Status)) + 
+        geom_bar(stat='identity', position="stack")
+
+##Self_Employed
+p5 <- loan %>% dplyr::select(5,12) %>% group_by(,Loan_Status) %>% count() %>%
+    ggplot(aes(x=Self_Employed, y=freq, fill=Loan_Status)) + 
+        geom_bar(stat='identity', position="stack")
+
+##Property_Area
+p6 <- loan %>% dplyr::select(11,12) %>% group_by(,Loan_Status) %>% count() %>%
+    ggplot(aes(x=Property_Area, y=freq, fill=Loan_Status)) + 
+        geom_bar(stat='identity', position="stack")
+
+grid.arrange(p1, p2, p3, p4, p5, p6, nrow = 3, ncol = 2)
+
+```
+
+From the above figures we can extend the following observations:
+
+* **males outnumber females** and **non self employed outnumber self employed** on a 5:1 basis, **married outnumber non married** on a 2:1 basis, **those without dependents make up a majority**, those that have **graduated make up a majority**, and those with **properties in semiurban area make up a slight majority** of loan applications for the data under our consideration,
+* with regard to loan approval, the only clearer takeaway is that it appears that **those in semiurban areas are approved at a greater rate than those in rural and urban areas**.
+
+While the visualization of our six categorical variables distributions with regard to our dependent variable is enlightening, it doesn't appear to provide clear indication regarding one vs. another's predictive capabilities.
+
+Prior to predicting loan approval using Decision Trees, Random Forests, and Gradient Boosting, we're to normalize the numerical variables noted earlier.
+
+Being that we're dealing with positively skewed data at a rather extreme magnitude, well utilize the log transform:
+
+###MS: 3.24.21 LEFT OFF HERE
+
+```{r}
+#normalization: account for outliers with log transform
+
+```
+
+................................................................................
 
 
 # 2. Decision Trees
