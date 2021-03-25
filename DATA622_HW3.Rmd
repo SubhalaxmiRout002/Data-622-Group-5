@@ -21,7 +21,11 @@ output:
 * Magnus Skonberg
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = TRUE)
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
 ```
 
 ```{r library, comment=FALSE, warning=FALSE, message=FALSE }
@@ -364,34 +368,106 @@ Being that we're dealing with positively skewed data at a rather extreme magnitu
 
 2. Please use the attached dataset on loan approval status to predict loan approval using Decision Trees. Please be sure to conduct a thorough exploratory analysis to start the task and walk us through your reasoning behind all the steps you are taking. (40 points)
 
+Before create model lets see size of loan dataset and check for data is balanced or unbalanced
+
+```{r}
+# size of dataset
+dim(loan)
+
+# Count for Loan approved or not
+table(loan$Loan_Status)
+```
+
+Data is not imbalanced, we can proceed with Decision Trees. 
+
+
+Data Preparation for Decision Tree model:
+
+* Some variables type have factor,convert factor to numeric.
+* Remove Gender, Married, Self_Employed variables from data, because loan approval does not depend on gender or marital status or self occupy business or not
+* Change variables  Education and Property_Area from Categorical to numeric 
+  
+  + Education: Graduate = 2 and Not Graduate = 1
+  + Property_Area: Semiurban = 3, Urban = 2, Rural = 1
+  
+
+
+```{r}
+# Remove Gender, Married, Self_Employed
+loan_new <- subset(loan, select = -c (Gender, Married, Self_Employed))
+
+# Convert Dependents, Credit_History numeric type
+loan_new$Dependents <- as.numeric(loan_new$Dependents)
+loan_new$Credit_History <- as.numeric(loan_new$Credit_History)
+
+# Change Variables values
+loan_new$Education <- ifelse(loan_new$Education=="Graduate", 2, 1)
+if(loan_new$Property_Area=="Semiurban")
+  {
+    loan_new$Property_Area <- 3
+} else if(loan_new$Property_Area=="Urban"){
+    loan_new$Property_Area <- 2
+} else {
+    loan_new$Property_Area <- 1
+}
+
+```
+
+Split data in to train and test.
+
 ```{r}
 #Split data into training and testing sets
 set.seed(123)
-sample_data = sample.split(loan, SplitRatio = 0.75)
-train_data <- subset(loan, sample_data == TRUE)
-test_data <- subset(loan, sample_data == FALSE)
+sample_data = sample.split(loan_new, SplitRatio = 0.75)
+train_data <- subset(loan_new, sample_data == TRUE)
+test_data <- subset(loan_new, sample_data == FALSE)
 ```
 
 ```{r}
 #Class Method
-prop.table(table(loan$Loan_Status))
-fit <- rpart(Loan_Status~., data = loan, method = 'class')
-rpart.plot(fit, extra = 106)
+# prop.table(table(loan$Loan_Status))
+# fit <- rpart(Loan_Status~., data = loan, method = 'class')
+# rpart.plot(fit, extra = 106)
+
+# Fit model 
+tree <- ctree(Loan_Status ~ ., data = train_data)
+plot(tree, typr = 'simple')
+
 ```
+
 
 ```{r}
-fit <- rpart(Loan_Status~., data = loan, method = 'class')
-predict_unseen <-predict(fit, loan, type ='class')
-table_mat <-table(loan$Loan_Status, predict_unseen)
-table_mat
-accuracy_Test <-sum(diag(table_mat))/sum(table_mat)
-print(paste('Accuracy for test', accuracy_Test))
+# Miscalssification Error with Train data
+tab <- table(Predicted = predict(tree), Actual = train_data$Loan_Status)
+print(tab)
+print(paste('Miscalssification Error with Train data', round(1 - sum(diag(tab))/sum(tab),3)))
+
+# Miscalssification Error with Test data
+testPred <- predict(tree, test_data)
+testtab <- table(Predicted = testPred, Actual = test_data$Loan_Status)
+print(testtab)
+print(paste('Miscalssification Error with Test data', round(1 - sum(diag(testtab))/sum(testtab),3)))
+
+# fit <- rpart(Loan_Status~., data = train_data)
+# fit <- rpart(Loan_Status~., data = loan, method = 'class')
+# predict_unseen <-predict(fit, loan, type ='class')
+# table_mat <-table(loan$Loan_Status, predict_unseen)
+# table_mat
+# accuracy_Test <-sum(diag(table_mat))/sum(table_mat)
+# print(paste('Accuracy for test', accuracy_Test))
 ```
 
+From the Decision tree shown above we can conclude that Credit_History is the most important factor when deciding if someone will be approved for a loan or not.
+
+* Train dataset accuracy : `r (1 - 0.193) * 100`, error rate: `r 0.193 * 100`
+* Test dataset accuracy : `r (1 - 0.162) * 100`, error rate:`r 0.162 * 100`
 
 ## Random Forests
+
 3. Using the same dataset on Loan Approval Status, please use Random Forests to predict on loan approval status. Again, please be sure to walk us through the steps you took to get to your final model. (50 points)
+
 ```{r}
+# Subha : WOrking on Random forest
 #Create the forest
 #output.forest <-randomForest(Loan_Status~ Gender + Married + Dependents + ApplicantIncome + LoanAmount + Loan_Amount_Term + Credit_History + Property_Area, data = loan)
 
@@ -401,6 +477,7 @@ print(paste('Accuracy for test', accuracy_Test))
 #Importance of each predictor
 #print(importance(output.forest, type=2))
 ```
+
 From the random forest shown above we can conclude that Credit_History, Applicant_Income and Loan_Amount are the most important factors when deciding if someone will be approved for a loan or not. The model has a 17.96% error which means we can predict with 82.04% accuracy.
 
 ```{r randomforestplot}
