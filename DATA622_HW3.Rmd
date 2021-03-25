@@ -418,14 +418,14 @@ From the random forest shown above we can conclude that Credit_History, Applican
 ## Gradient Boosting
 4. Using the Loan Approval Status data, please use Gradient Boosting to predict on the loan approval status. Please use whatever boosting approach you deem appropriate; but please be sure to walk us through your steps. (50 points)
 
+In boosting, each new tree is a fit on a modified version of the original data set.Gradient Boosting trains many models in a gradual, additive and sequential manner. 
+
 ```{r}
 #Separating training and test data
-#train=sample(1:261, size = 261)
-#loan.boost=gbm(Loan_Status ~ . ,data = loan[train,],distribution = "gaussian",n.trees = 10000, shrinkage = 0.01, interaction.depth = 4)
-#loan.boost
-
-#Summary gives a table of Variable Importance and a plot of Variable Importance
-#summary(loan.boost)
+set.seed(123)
+sample_data = sample.split(loan, SplitRatio = 0.75)
+train <- subset(loan, sample_data == TRUE)
+test <- subset(loan, sample_data == FALSE)
 ```
 
 ```{r gradientboostplot}
@@ -434,8 +434,45 @@ From the random forest shown above we can conclude that Credit_History, Applican
 ```
 
 ```{r}
-#cor(loan$LoanAmount, loan$Credit_History)
-#cor(loan$ApplicantIncome, loan$Credit_History)
+# Using the Gradient Boosting to predict the loan approval status
+loan.boost=gbm(Loan_Status ~ . ,
+               data = train,
+               distribution = "gaussian",
+               n.trees = 10000, 
+               shrinkage = 0.01, 
+               interaction.depth = 4,
+               cv.folds = 4)
+loan.boost
+
+ntree_opt_cv <- gbm.perf(loan.boost, method = "cv")
+```
+
+```{r}
+#Summary gives a table of Variable Importance and a plot of Variable Importance
+summary(loan.boost)
+```
+
+Using its internal calculations such as Variable Importance, it will also point whether any of the predictor variables had zero influence in the model.The above Gradient Boosted Model which generates 10000 trees and the shrinkage parameter *lambda = 0.01* which is also a sort of learning rate.Summary of the plot gives us the feature importance plot. This table ranks the individual variables in the loan dataset based on their relative influence. On the top of the summary list are the two most important features are *Applicationincome* and *LoanAmount*.The gbm package comes with a default function called gbm.perf() to determine the optimum number of iterations. Our model will stop the training procedure on the given optimum number of iterations.  
+
+### Predictions using gbm
+
+We are using the prediction() function to generate the predictions out of the data. Since we have figured out the optimum number of trees by performing early stopping 
+
+```{r gradientboostplot}
+predictions <- predict(object = loan.boost, 
+                       newdata = test,
+                       n_trees = ntree_opt_cv,
+                       type = "response")
+print(predictions)
+```
+
+Now let's assess the predictions and guage the model's performance. First we will create a confusion matrix. Confusion matrix will compare the model's actual values with predicted values. 
+
+```{r}
+#Still working on this - Getting an error
+#PredictionsBinaries <- as.factor(ifelse(predictions>0.7,1,0))
+#test$Loan_Status<-as.factor(test$Loan_Status)
+#confusionMatrix(PredictionsBinaries, test$Loan_Status)
 ```
 
 ## Model Comparison (Decision Trees vs. Random Forests vs. Gradient Boosting)
