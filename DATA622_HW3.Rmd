@@ -706,10 +706,10 @@ print(predictions)
 Now let's assess the predictions and guage the model's performance. First we will create a confusion matrix. Confusion matrix will compare the model's actual values with predicted values. 
 
 ```{r}
-#Still working on this - Getting an error
-#PredictionsBinaries <- as.factor(ifelse(predictions>0.7,1,0))
-#test$Loan_Status<-as.factor(test$Loan_Status)
-#confusionMatrix(PredictionsBinaries, test$Loan_Status)
+caret::confusionMatrix(
+  data = factor(predictions, levels = 1:614),
+  reference = factor(test$Loan_Status, levels = 1:614)
+  )
 ```
 
 ## Model Comparison (Decision Trees vs. Random Forests vs. Gradient Boosting)
