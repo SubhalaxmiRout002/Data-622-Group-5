@@ -49,6 +49,7 @@ library(gbm)
 library(mice)
 library(plyr)
 library(gridExtra)
+library(kableExtra)
 ```
 
 # Background
@@ -250,7 +251,7 @@ Imputation was a success and thus our data pre-processing has been completed. We
 
 To identify features that carry promise vs. those that may not, we consider a correlation matrix for our numeric variables: 
 
-```{r, messages=FALSE}
+```{r message=FALSE}
 #Correlation matrix for numeric variables
 library(corrplot)
 
@@ -260,15 +261,14 @@ loan_corr_y <- loan %>%
     select_if(is.numeric) %>%
     cor()
 
-corrplot(loan_corr_y, title="Loan Approved")
+corrplot(loan_corr_y, title="Loan Approved",type = "lower")
 
 #Loan Rejected correlation
 loan_corr_n <- loan %>%
     filter(Loan_Status == "N") %>%
     select_if(is.numeric) %>%
     cor()
-
-corrplot(loan_corr_n, title="Loan Rejected")
+corrplot(loan_corr_n, title="Loan Rejected", type = "lower", diag = T)
 ```
 
 When we consider loan approval and rejection, `LoanAmount` and `ApplicantIncome` have a relatively strong correlation. For loan rejection, `LoanAmount` also appears to have moderate correlation with `CoapplicantIncome`. Remaining features do not have strong correlation and thus we'll only note the aforementioned relationships for consideration for *possible* feature removal later. 
@@ -384,31 +384,37 @@ Data is not imbalanced, we can proceed with Decision Trees.
 Data Preparation for Decision Tree model:
 
 * Some variables type have factor,convert factor to numeric.
-* Remove Gender, Married, Self_Employed variables from data, because loan approval does not depend on gender or marital status or self occupy business or not
+* Remove Gender variable from data, because loan approval does not depend on gender
 * Change variables  Education and Property_Area from Categorical to numeric 
   
-  + Education: Graduate = 2 and Not Graduate = 1
-  + Property_Area: Semiurban = 3, Urban = 2, Rural = 1
+  + Education: Graduate = 1 and Not Graduate = 0
+  + Married: Yes = 1 and No = 0
+  + Self_Employed:  Yes = 1, Urban = 1, No = 0
   
+##### DT Model 1
 
+This model consisits of all attributes excluding Gender. 
 
 ```{r}
 # Remove Gender, Married, Self_Employed
-loan_new <- subset(loan, select = -c (Gender, Married, Self_Employed))
+loan_new <- subset(loan, select = -c (Gender))
 
 # Convert Dependents, Credit_History numeric type
 loan_new$Dependents <- as.numeric(loan_new$Dependents)
 loan_new$Credit_History <- as.numeric(loan_new$Credit_History)
 
 # Change Variables values
-loan_new$Education <- ifelse(loan_new$Education=="Graduate", 2, 1)
+loan_new$Education <- ifelse(loan_new$Education=="Graduate", 1, 0)
+loan_new$Married <- ifelse(loan_new$Married=="Yes", 1, 0)
+loan_new$Self_Employed <- ifelse(loan_new$Self_Employed == "Yes", 1, 0)
+
 if(loan_new$Property_Area=="Semiurban")
   {
-    loan_new$Property_Area <- 3
-} else if(loan_new$Property_Area=="Urban"){
     loan_new$Property_Area <- 2
-} else {
+} else if(loan_new$Property_Area=="Urban"){
     loan_new$Property_Area <- 1
+} else {
+    loan_new$Property_Area <- 0
 }
 
 ```
@@ -424,15 +430,19 @@ test_data <- subset(loan_new, sample_data == FALSE)
 ```
 
 ```{r}
+set.seed(144)
 #Class Method
 # prop.table(table(loan$Loan_Status))
 # fit <- rpart(Loan_Status~., data = loan, method = 'class')
 # rpart.plot(fit, extra = 106)
 
+
+# Plot tree
+binary.model <- rpart(Loan_Status ~ ., data = train_data, cp = .02)
+rpart.plot(binary.model)
+
 # Fit model 
 tree <- ctree(Loan_Status ~ ., data = train_data)
-plot(tree, typr = 'simple')
-
 ```
 
 
@@ -459,37 +469,187 @@ print(paste('Miscalssification Error with Test data', round(1 - sum(diag(testtab
 
 From the Decision tree shown above we can conclude that Credit_History is the most important factor when deciding if someone will be approved for a loan or not.
 
-* Train dataset accuracy : `r (1 - 0.193) * 100`, error rate: `r 0.193 * 100`
-* Test dataset accuracy : `r (1 - 0.162) * 100`, error rate:`r 0.162 * 100`
+* Train dataset accuracy : `r (1 - 0.177) * 100`, error rate: `r 0.177 * 100`
+* Test dataset accuracy : `r (1 - 0.198) * 100`, error rate:`r 0.198 * 100`
+
+
+##### Model Evaluation
+
+
+The library caret has a function to make prediction. Use the prediction to compute the confusion matrix and see the accuracy score and other matrices.
+
+```{r}
+confusionMatrix(testPred, test_data$Loan_Status)
+```
+
+
+Decision Tree model shows an accuracy of 80.24 %.
+
+Let's have a tabular view of DT model and its matrices.
+
+
+```{r}
+
+DT_Model <- confusionMatrix(testPred, test_data$Loan_Status)$byClass
+
+tabview <- data.frame(DT_Model)
+
+tabview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+```
+
 
 ## Random Forests
 
 3. Using the same dataset on Loan Approval Status, please use Random Forests to predict on loan approval status. Again, please be sure to walk us through the steps you took to get to your final model. (50 points)
 
-```{r}
-# Subha : WOrking on Random forest
-#Create the forest
-#output.forest <-randomForest(Loan_Status~ Gender + Married + Dependents + ApplicantIncome + LoanAmount + Loan_Amount_Term + Credit_History + Property_Area, data = loan)
+Random forests are one the most popular machine learning algorithms. They are so successful because they provide in general a good predictive performance, low overfitting, and easy interpretability. RF can be used for classification or regression. It can deal with Large number of features.
 
-#View the forest results
-#print(output.forest)
+More features better for the model, we will exclude Gender variable because logically it is not correct that for Female loan approval will be less and more for Male. Most of data having zero dependants, so exclude Dependents. 
+
+Data Transformation for RF:
+
+* Convert Factor variables to numeric
+* Change variables  Education and Property_Area from Categorical to numeric 
+  
+  + Education: Graduate = 1 and Not Graduate = 0
+  + Property_Area: Semiurban = 2, Urban = 1, Rural = 0
+  + Married: Yes = 1, No = 0
+  + Self_Employed: Yes = 1, No = 0
+
+```{r}
+loan_RF <- subset(loan, select = -c(Gender, Dependents))
+
+# Convert Dependents, Credit_History numeric type
+
+#loan_RF$Dependents <- as.numeric(loan_RF$Dependents)
+loan_RF$Credit_History <- as.numeric(loan_RF$Credit_History)
+
+# Change Variables values
+loan_RF$Education <- ifelse(loan_RF$Education=="Graduate", 1, 0)
+loan_RF$Married <- ifelse(loan_RF$Married=="Yes", 1, 0)
+loan_RF$Self_Employed <- ifelse(loan_RF$Self_Employed=="Yes", 1, 0)
+
+
+
+if(loan_RF$Property_Area=="Semiurban")
+  {
+    loan_RF$Property_Area <- 2
+} else if(loan_RF$Property_Area=="Urban"){
+    loan_RF$Property_Area <- 1
+} else {
+    loan_RF$Property_Area <- 0
+}
+
+head(loan_RF)
+
+```
+
+Split data in to train and test set. 
+
+
+```{r}
+set.seed(1247)
+
+ind <- sample(2, nrow(loan_RF), replace = TRUE, prob = c(0.75, 0.25))
+train_RF <- loan_RF[ind == 1, ]
+test_RF <- loan_RF[ind == 2, ]
+
+dim(train_RF)
+dim(test_RF)
+
+```
+
+Random Forest Model building
+
+Helps with feature selection based on importance and avoids over-fitting.
+
+Steps:
+
+* Draw ntree bootstrap samples
+* For each bootstrap sample, grow un-pruned tree by choosing best split based on random sample of mtry predictors at each node
+* Predict test data using majority votes for classification and average for regression based on ntrees
+
+##### Random Forest Model 1
+
+Create first model with all variables except gender and Dependents.
+
+```{r}
+library(randomForest)
+
+set.seed(222)
+
+for (i in 1:10)
+{
+rf = randomForest(Loan_Status ~ . , data = train_RF, mtry = i)
+err <- rf$err.rate
+oob_err <- err[nrow(err), "OOB"]
+print(paste("For mtry : ", i , "OOB Error Rate : ", round(oob_err, 4)))
+}
+
+```
+
+From above OOB Error Rate, mtry = 2 shows less error. We will set mtry = 2 for RF model.
+
+```{r}
+set.seed(35)
+rf_1 = randomForest(Loan_Status ~ . , data = train_RF, mtry = 2)
+print(rf_1)
 
 #Importance of each predictor
-#print(importance(output.forest, type=2))
+print(importance(rf_1, type=2))
 ```
 
-From the random forest shown above we can conclude that Credit_History, Applicant_Income and Loan_Amount are the most important factors when deciding if someone will be approved for a loan or not. The model has a 17.96% error which means we can predict with 82.04% accuracy.
+From the random forest shown above we can conclude that Credit_History, Applicant_Income, CoapplicantIncome, and Loan_Amount are the most important factors when deciding if someone will be approved for a loan or not. The model has a 18.04% error which means we can predict with `r 100 - 18.04`% accuracy.
 
-```{r randomforestplot}
-#plot(output.forest)
-#varImpPlot(output.forest)
+##### Random Forest Model 2
+
+This model we select only important factors such as Credit_History, Applicant_Income, CoapplicantIncome, and Loan_Amount.
+
+
+```{r}
+set.seed(102)
+
+for (i in 1:10)
+{
+rf = randomForest(Loan_Status ~ Credit_History + LoanAmount + CoapplicantIncome + ApplicantIncome, data = train_RF, mtry = i)
+err <- rf$err.rate
+oob_err <- err[nrow(err), "OOB"]
+print(paste("For mtry : ", i , "OOB Error Rate : ", round(oob_err, 4)))
+}
+
+rf_2 = randomForest(Loan_Status ~ Credit_History + LoanAmount + CoapplicantIncome + ApplicantIncome , data = train_RF, mtry = 1)
+print(rf_2)
+
 ```
 
-```{r randomforestprediction}
-#new <- data.frame(Gender='Male', Married='Yes', Dependents=0, ApplicantIncome=2000, LoanAmount=300, Loan_Amount_Term=360, Credit_History=1, Property_Area='Urban')
-#predict(output.forest, newdata =new)
+
+##### Prediction
+
+We will do the model evaluation, apply RF model 1 and model 2 with test dataset to see the accuracy and other matrices. 
+
+
+```{r}
+rf_predict_1 <- predict(rf_1, newdata = test_RF)
+confusionMatrix(rf_predict_1, test_RF$Loan_Status)
+
+rf_predict_2 <- predict(rf_2, newdata = test_RF)
+confusionMatrix(rf_predict_2, test_RF$Loan_Status)
+
 ```
 
+We have an accuracy of 80 % for first model and 81.82 %for second model.
+
+Let's have a tabular view of RF model 1 and Model 2 matrix comparison.
+
+```{r}
+
+RF_Model_1 <- confusionMatrix(rf_predict_1, test_RF$Loan_Status)$byClass
+RF_Model_2 <- confusionMatrix(rf_predict_2, test_RF$Loan_Status)$byClass
+
+tabularview <- data.frame(RF_Model_1, RF_Model_2)
+
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+```
 
 
 ## Gradient Boosting
@@ -506,8 +666,8 @@ test <- subset(loan, sample_data == FALSE)
 ```
 
 ```{r gradientboostplot}
-#plot(loan.boost, i="LoanAmount")
-#plot(loan.boost, i="ApplicantIncome")
+plot(loan.boost, i="LoanAmount")
+plot(loan.boost, i="ApplicantIncome")
 ```
 
 ```{r}
@@ -515,8 +675,8 @@ test <- subset(loan, sample_data == FALSE)
 loan.boost=gbm(Loan_Status ~ . ,
                data = train,
                distribution = "gaussian",
-               n.trees = 10000, 
-               shrinkage = 0.01, 
+               n.trees = 10000,
+               shrinkage = 0.01,
                interaction.depth = 4,
                cv.folds = 4)
 loan.boost
@@ -536,7 +696,7 @@ Using its internal calculations such as Variable Importance, it will also point 
 We are using the prediction() function to generate the predictions out of the data. Since we have figured out the optimum number of trees by performing early stopping 
 
 ```{r gradientboostplot}
-predictions <- predict(object = loan.boost, 
+predictions <- predict(object = loan.boost,
                        newdata = test,
                        n_trees = ntree_opt_cv,
                        type = "response")
