@@ -447,16 +447,16 @@ tree <- ctree(Loan_Status ~ ., data = train_data)
 
 
 ```{r}
-# Miscalssification Error with Train data
+# Misclassification Error with Train data
 tab <- table(Predicted = predict(tree), Actual = train_data$Loan_Status)
 print(tab)
-print(paste('Miscalssification Error with Train data', round(1 - sum(diag(tab))/sum(tab),3)))
+print(paste('Misclassification Error with Train data', round(1 - sum(diag(tab))/sum(tab),3)))
 
-# Miscalssification Error with Test data
+# Misclassification Error with Test data
 testPred <- predict(tree, test_data)
 testtab <- table(Predicted = testPred, Actual = test_data$Loan_Status)
 print(testtab)
-print(paste('Miscalssification Error with Test data', round(1 - sum(diag(testtab))/sum(testtab),3)))
+print(paste('Misclassification Error with Test data', round(1 - sum(diag(testtab))/sum(testtab),3)))
 
 # fit <- rpart(Loan_Status~., data = train_data)
 # fit <- rpart(Loan_Status~., data = loan, method = 'class')
