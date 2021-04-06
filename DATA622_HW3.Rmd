@@ -50,6 +50,8 @@ library(mice)
 library(plyr)
 library(gridExtra)
 library(kableExtra)
+library(gbm)
+library(xgboost)      # a faster implementation of gbm
 ```
 
 # Background
@@ -93,8 +95,6 @@ Once we've dropped NA values and selected pertinent variables, we end up with a 
 
 # 1. K-Nearest Neighbors (KNN)
 
-[insert background on KNN]
-
 The KNN algorithm hinges on the idea that similar data will be near one another. When applying KNN, the distance between data points are used to classify data. Those nearer one another are "batched" together. The amount of batches we see and the distance between points is determined by the k value we select:
 
 * Smaller k --> fewer batches and larger distance between "like" points.
@@ -128,7 +128,7 @@ classifier_knn <- knn(train = train_scale,
 
 Performing an 80-20 split allocates 80% of our data for training the model and 20% of our data for testing it. Whereas applying the scale() function centers and scales our independent variables to reduce bias and improve predictive accuracy. *Although, we start with k=1 (neighbors) for our KNN model fit here. We'll vary this value later to interpret its impact on predictive accuracy.*
 
-Once our model has been fit, we assess its accuracy visualizing with a confusion matrix and then calculating the corresponding accuracy based on these values:
+Once our model has been fit, we assess its accuracy via confusion matrix :
 
 ```{r}
 # Confusion Matrix 
@@ -291,7 +291,7 @@ From the above figures we observe that:
 * `ApplicantIncome` and `LoanAmount` appear to be right skewed normal with a number of noteworthy outliers, and
 * `CoapplicantIncome` has a peak at 0 joined with an otherwise right skewed normal distribution.
 
-All three numeric variables would require normalization for modeling consideration.
+Scaling is not necessary for Decision Trees or Random Forests but may prove useful for Gradient Descent. Thus, we won't act on normalization at this point, we'll just note the point for future consideration.
 
 Next, we explore our categorical variables:
 
@@ -350,36 +350,32 @@ From the above figures we can extend the following observations:
 
 While the visualization of our six categorical variables distributions with regard to our dependent variable is enlightening, it doesn't appear to provide clear indication regarding one vs. another's predictive capabilities.
 
-Prior to predicting loan approval using Decision Trees, Random Forests, and Gradient Boosting, we're to normalize the numerical variables noted earlier.
-
-Being that we're dealing with positively skewed data at a rather extreme magnitude, well utilize the log transform:
-
-###MS: 3.24.21 LEFT OFF HERE
-
-```{r}
-#normalization: account for outliers with log transform
-
-```
+With a relatively thorough exploratory analysis under our belt, we move on to the building and assessment of our Decision Tree, Random Forest, and Gradient Descent models.
 
 ................................................................................
 
 
 # 2. Decision Trees
 
-2. Please use the attached dataset on loan approval status to predict loan approval using Decision Trees. Please be sure to conduct a thorough exploratory analysis to start the task and walk us through your reasoning behind all the steps you are taking. (40 points)
+Decision trees build classification or regression models in the form of a tree structure. Datasets are broken into smaller and smaller subsets along chosen parameters, as the associated decision tree is developed. 
 
-Before create model lets see size of loan dataset and check for data is balanced or unbalanced
+The result is a tree with nodes and branches. Nodes denote a split point based on the attribute in question while branches denote the corresponding outcome. We start at a "root node", terminate at "leaf nodes", and use corresponding lead nodes to provide proportions regarding resulting class labels.
+
+Due to the ease of interpretability, decision trees are a popular early classifier. For our purposes, we're dealing with a categorical dependent variable, and will build a Decision Tree model from the loan approval dataset to provide `Loan_Status` predictions (ie. Approve or Reject).
+
+**Thoroughly document the reasoning behind the steps we take.**
+
+Before creating our model, we first verify the proportion of loans that are approved vs. rejected: 
 
 ```{r}
 # size of dataset
-dim(loan)
+#dim(loan) #MS: step completed during EDA
 
 # Count for Loan approved or not
 table(loan$Loan_Status)
 ```
 
-Data is not imbalanced, we can proceed with Decision Trees. 
-
+The loans under consideration are approved at more than a 2:1 ratio.
 
 Data Preparation for Decision Tree model:
 
@@ -398,6 +394,8 @@ This model consisits of all attributes excluding Gender.
 ```{r}
 # Remove Gender, Married, Self_Employed
 loan_new <- subset(loan, select = -c (Gender))
+
+##MS: why no gender?
 
 # Convert Dependents, Credit_History numeric type
 loan_new$Dependents <- as.numeric(loan_new$Dependents)
@@ -496,9 +494,9 @@ tabview <- data.frame(DT_Model)
 
 tabview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
 ```
+Comment on this.
 
-
-## Random Forests
+## 3. Random Forests
 
 3. Using the same dataset on Loan Approval Status, please use Random Forests to predict on loan approval status. Again, please be sure to walk us through the steps you took to get to your final model. (50 points)
 
@@ -658,35 +656,132 @@ tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("stri
 In boosting, each new tree is a fit on a modified version of the original data set.Gradient Boosting trains many models in a gradual, additive and sequential manner. 
 
 ```{r}
-#Separating training and test data
-set.seed(123)
-sample_data = sample.split(loan, SplitRatio = 0.75)
-train <- subset(loan, sample_data == TRUE)
-test <- subset(loan, sample_data == FALSE)
+#Pre-process data
+#1. normalize independent numeric vars
+
+#calculate skewness prior to normalization
+skewness(loan$ApplicantIncome, na.rm = TRUE)
+#skewness(loan$CoapplicantIncome, na.rm = TRUE)
+skewness(loan$LoanAmount, na.rm = TRUE)
+
+#store sum of ApplicantIncome and CoapplicantIncome in ApplicantIncome
+loan$ApplicantIncome <- loan$ApplicantIncome + loan$CoapplicantIncome
+
+#normalization: account for outliers with log transform
+loan$ApplicantIncome <- log10(loan$ApplicantIncome)
+#loan$CoapplicantIncome <- log10(loan$CoapplicantIncome)
+loan$LoanAmount <- log10(loan$LoanAmount)
+
+#calculate skewness after normalization
+skewness(loan$ApplicantIncome, na.rm = TRUE)
+#skewness(loan$CoapplicantIncome, na.rm = TRUE) #produced NaN - dealt with via summing
+skewness(loan$LoanAmount, na.rm = TRUE)
 ```
 
+Based on the improved skewness values our normalization was a success and these (2) independent, numeric variables are now prepared to be included in our Gradient Boosting model.
+
+Reference: https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
+
+```{r}
+#2. drop impertinent variables, convert to numeric, and change variable values
+loan_GB <- subset(loan, select = -c(Gender)) #why drop Gender?
+
+# Convert Dependents, Credit_History numeric type
+loan_GB$Dependents <- as.numeric(loan_GB$Dependents)
+loan_GB$Credit_History <- as.numeric(loan_GB$Credit_History)
+
+# Change Variables values
+loan_GB$Education <- ifelse(loan_GB$Education=="Graduate", 1, 0)
+loan_GB$Married <- ifelse(loan_GB$Married=="Yes", 1, 0)
+loan_GB$Self_Employed <- ifelse(loan_GB$Self_Employed=="Yes", 1, 0)
+
+if(loan_GB$Property_Area=="Semiurban")
+  {
+    loan_GB$Property_Area <- 2
+} else if(loan_GB$Property_Area=="Urban"){
+    loan_GB$Property_Area <- 1
+} else {
+    loan_GB$Property_Area <- 0 #rural
+}
+
+#3. convert Loan_Status to type factor
+loan_GB$Loan_Status <- ifelse(loan_GB$Loan_Status=="Y", 1, 0)
+#loan$Loan_Status <- as.factor(loan$Loan_Status)
+
+head(loan_GB) #verify all numeric inputs
+```
+
+At this point pre-processing of our data is complete and we've verified that we will indeed be feeding our model all numeric inputs. Next, we partition our data:
+
+```{r}
+#Partition data
+set.seed(1234)
+
+#loan_GB
+
+ind <- sample(2, nrow(loan_GB), replace = TRUE, prob = c(0.75, 0.25))
+train_GB <- loan_GB[ind == 1, ]
+test_GB <- loan_GB[ind == 2, ]
+
+dim(train_GB) #457 x 11
+dim(test_GB) #157 x 11
+```
+
+```{r}
+#Create train, test matrices - one hot encoding for factor variables
+library(Matrix)
+trainm <- sparse.model.matrix(Loan_Status ~ ., data = train_GB) # rmv Loan_Status col (?)
+head(trainm)
+train_label <- train_GB[,"Loan_Status"]
+#train_label <- train_label - 1 #to account for num_class error
+train_matrix <- xgb.DMatrix(data = as.matrix(trainm),label = train_label )
+
+testm <- sparse.model.matrix(Loan_Status ~ ., data = test_GB)
+#head(trainm)
+test_label <- test_GB[,"Loan_Status"]
+#test_label <- test_label - 1
+test_matrix <- xgb.DMatrix(data = as.matrix(testm),label = test_label )
+
+#Parameters
+nc <- length(unique(train_label)) #number of classes
+xgb_params <- list("objective" = "multi:softprob",
+                   "eval_metric" = "mlogloss",
+                   "num_class" = nc)
+watchlist <- list(train = train_matrix, test = test_matrix)
+
+#extreme Gradient Boosting Model
+GB_model <- xgb.train(params = xgb_params,
+                      data = train_matrix,
+                      nrounds = 100, #run 100 iterations
+                      watchlist = watchlist)
+
+###MS LEFT OFF HERE: 4.6.21
+```
+
+The above code snippet converts factor variables into "dummie variables". In our case, that's exclusively `Loan_Status`.
+
 ```{r gradientboostplot}
-plot(loan.boost, i="LoanAmount")
-plot(loan.boost, i="ApplicantIncome")
+# plot(loan.boost, i="LoanAmount")
+# plot(loan.boost, i="ApplicantIncome")
 ```
 
 ```{r}
 # Using the Gradient Boosting to predict the loan approval status
-loan.boost=gbm(Loan_Status ~ . ,
-               data = train,
-               distribution = "gaussian",
-               n.trees = 10000,
-               shrinkage = 0.01,
-               interaction.depth = 4,
-               cv.folds = 4)
-loan.boost
-
-ntree_opt_cv <- gbm.perf(loan.boost, method = "cv")
+# loan.boost=gbm(Loan_Status ~ . ,
+#                data = train,
+#                distribution = "gaussian",
+#                n.trees = 10000,
+#                shrinkage = 0.01,
+#                interaction.depth = 4,
+#                cv.folds = 4)
+# loan.boost
+# 
+# ntree_opt_cv <- gbm.perf(loan.boost, method = "cv")
 ```
 
 ```{r}
 #Summary gives a table of Variable Importance and a plot of Variable Importance
-summary(loan.boost)
+#summary(loan.boost)
 ```
 
 Using its internal calculations such as Variable Importance, it will also point whether any of the predictor variables had zero influence in the model.The above Gradient Boosted Model which generates 10000 trees and the shrinkage parameter *lambda = 0.01* which is also a sort of learning rate.Summary of the plot gives us the feature importance plot. This table ranks the individual variables in the loan dataset based on their relative influence. On the top of the summary list are the two most important features are *Applicationincome* and *LoanAmount*.The gbm package comes with a default function called gbm.perf() to determine the optimum number of iterations. Our model will stop the training procedure on the given optimum number of iterations.  
@@ -695,21 +790,21 @@ Using its internal calculations such as Variable Importance, it will also point 
 
 We are using the prediction() function to generate the predictions out of the data. Since we have figured out the optimum number of trees by performing early stopping 
 
-```{r gradientboostplot}
-predictions <- predict(object = loan.boost,
-                       newdata = test,
-                       n_trees = ntree_opt_cv,
-                       type = "response")
-print(predictions)
+```{r gradientboostplot2}
+#predictions <- predict(object = loan.boost,
+#                       newdata = test,
+#                       n_trees = ntree_opt_cv,
+#                       type = "response")
+#print(predictions)
 ```
 
 Now let's assess the predictions and guage the model's performance. First we will create a confusion matrix. Confusion matrix will compare the model's actual values with predicted values. 
 
 ```{r}
-caret::confusionMatrix(
-  data = factor(predictions, levels = 1:614),
-  reference = factor(test$Loan_Status, levels = 1:614)
-  )
+#caret::confusionMatrix(
+#  data = factor(predictions, levels = 1:614),
+#  reference = factor(test$Loan_Status, levels = 1:614)
+#  )
 ```
 
 ## Model Comparison (Decision Trees vs. Random Forests vs. Gradient Boosting)
