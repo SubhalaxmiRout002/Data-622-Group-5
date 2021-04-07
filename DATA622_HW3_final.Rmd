@@ -213,7 +213,7 @@ We're dealing with a 614 observation x 13 variable dataframe with:
 * `ApplicantIncome`, `CoApplicantIncome`,`LoanAmount`, `Loan_Amount_Term`, and `Credit_History`, all quantitative variables of type dbl or int, as independent variables, and
 * `Loan_ID`, `LoanGender`, `Married`, `Dependents`, `Education`, `Self_Employed`, `Property_Area`, and `Loan_Status`, all categorical, character-based variables, as independent variables.
 
-From the above output, we also get an idea of proportions for our variables of type factor (ie.`Gender`: 489 male, 112 female applicants) which we can explore in greater depth later.
+From the above output, we also get an idea of proportions for our variables of type factor (ie.`Gender`: 489 male, 112 female applicants and `Loan_Status`: 422 Y, 192 N) which we can explore in greater depth later.
 
 Of the above variables, we can see that `Loan_ID` does not appear to provide much insight. We'll drop this variable, explore a clearer visualization of NA counts and then deal with our NA values: 
 
@@ -352,8 +352,6 @@ While the visualization of our six categorical variables distributions with rega
 
 With a relatively thorough exploratory analysis under our belt, we move on to the building and assessment of our Decision Tree, Random Forest, and Gradient Descent models.
 
-................................................................................
-
 
 # 2. Decision Trees
 
@@ -363,39 +361,11 @@ The result is a tree with nodes and branches. Nodes denote a split point based o
 
 Due to the ease of interpretability, decision trees are a popular early classifier. For our purposes, we're dealing with a categorical dependent variable, and will build a Decision Tree model from the loan approval dataset to provide `Loan_Status` predictions (ie. Approve or Reject).
 
-**Thoroughly document the reasoning behind the steps we take.**
-
-Before creating our model, we first verify the proportion of loans that are approved vs. rejected: 
+To prepare our data for Decision Tree modeling, we convert variables of type factor to numeric, remove the `Gender` variable from consideration because loan approval does not depend upon gender (as exemplified by our plots during EDA), and change variables `Education` and `Property_Area` from categorical to numerical type:
 
 ```{r}
-# size of dataset
-#dim(loan) #MS: step completed during EDA
-
-# Count for Loan approved or not
-table(loan$Loan_Status)
-```
-
-The loans under consideration are approved at more than a 2:1 ratio.
-
-Data Preparation for Decision Tree model:
-
-* Some variables type have factor,convert factor to numeric.
-* Remove Gender variable from data, because loan approval does not depend on gender
-* Change variables  Education and Property_Area from Categorical to numeric 
-  
-  + Education: Graduate = 1 and Not Graduate = 0
-  + Married: Yes = 1 and No = 0
-  + Self_Employed:  Yes = 1, Urban = 1, No = 0
-  
-##### DT Model 1
-
-This model consisits of all attributes excluding Gender. 
-
-```{r}
-# Remove Gender, Married, Self_Employed
+# Remove Gender
 loan_new <- subset(loan, select = -c (Gender))
-
-##MS: why no gender?
 
 # Convert Dependents, Credit_History numeric type
 loan_new$Dependents <- as.numeric(loan_new$Dependents)
@@ -406,18 +376,12 @@ loan_new$Education <- ifelse(loan_new$Education=="Graduate", 1, 0)
 loan_new$Married <- ifelse(loan_new$Married=="Yes", 1, 0)
 loan_new$Self_Employed <- ifelse(loan_new$Self_Employed == "Yes", 1, 0)
 
-if(loan_new$Property_Area=="Semiurban")
-  {
-    loan_new$Property_Area <- 2
-} else if(loan_new$Property_Area=="Urban"){
-    loan_new$Property_Area <- 1
-} else {
-    loan_new$Property_Area <- 0
-}
+if(loan_new$Property_Area=="Semiurban"){loan_new$Property_Area <- 2} else if(loan_new$Property_Area=="Urban"){loan_new$Property_Area <- 1} else {
+    loan_new$Property_Area <- 0}
 
 ```
 
-Split data in to train and test.
+Using the built-in **sample.split** function we perform a train test split such that 75% of our data will be training data and 25% will be testing data: 
 
 ```{r}
 #Split data into training and testing sets
@@ -427,13 +391,10 @@ train_data <- subset(loan_new, sample_data == TRUE)
 test_data <- subset(loan_new, sample_data == FALSE)
 ```
 
+With our data properly pre-processed and a train-test split performed, we recursively split our dataset using R's built-in **rpart** (short for Recursive Partitioning and Regression Tree) function, plot the resulting model, and train our model using R's built-in **ctree** (conditional inference tree) function:
+
 ```{r}
 set.seed(144)
-#Class Method
-# prop.table(table(loan$Loan_Status))
-# fit <- rpart(Loan_Status~., data = loan, method = 'class')
-# rpart.plot(fit, extra = 106)
-
 
 # Plot tree
 binary.model <- rpart(Loan_Status ~ ., data = train_data, cp = .02)
@@ -443,91 +404,62 @@ rpart.plot(binary.model)
 tree <- ctree(Loan_Status ~ ., data = train_data)
 ```
 
+From the Decision tree above we observe that **`Credit_History` is the most important factor** when deciding if someone will be approved for a loan or not.
+
+With our model fit to our training data and `Loan_Status` as the response variable, we can explore the model's accuracy via confusion matrix and mis-classification error rate for both our training and testing data:
 
 ```{r}
-# Misclassification Error with Train data
+# Confusion matrix and misclassification error rate for training data
 tab <- table(Predicted = predict(tree), Actual = train_data$Loan_Status)
 print(tab)
-print(paste('Misclassification Error with Train data', round(1 - sum(diag(tab))/sum(tab),3)))
+print(paste('Misclassification error for training data', round(1 - sum(diag(tab))/sum(tab),3)))
 
-# Misclassification Error with Test data
+# Confusion matrix and misclassification error rate for testing data
 testPred <- predict(tree, test_data)
 testtab <- table(Predicted = testPred, Actual = test_data$Loan_Status)
 print(testtab)
-print(paste('Misclassification Error with Test data', round(1 - sum(diag(testtab))/sum(testtab),3)))
+print(paste('Misclassification error for testing data', round(1 - sum(diag(testtab))/sum(testtab),3)))
 
-# fit <- rpart(Loan_Status~., data = train_data)
-# fit <- rpart(Loan_Status~., data = loan, method = 'class')
-# predict_unseen <-predict(fit, loan, type ='class')
-# table_mat <-table(loan$Loan_Status, predict_unseen)
-# table_mat
-# accuracy_Test <-sum(diag(table_mat))/sum(table_mat)
-# print(paste('Accuracy for test', accuracy_Test))
 ```
 
-From the Decision tree shown above we can conclude that Credit_History is the most important factor when deciding if someone will be approved for a loan or not.
+From the output statistics above, we can draw our model's performance as:
 
 * Train dataset accuracy : `r (1 - 0.177) * 100`, error rate: `r 0.177 * 100`
 * Test dataset accuracy : `r (1 - 0.198) * 100`, error rate:`r 0.198 * 100`
 
-
-##### Model Evaluation
-
-
-The library caret has a function to make prediction. Use the prediction to compute the confusion matrix and see the accuracy score and other matrices.
+With these statistics in mind, we utilize the **confusionMatrix** function from the caret library and present our statistics as a kable table to glean more insight regarding our model's performance:
 
 ```{r}
-confusionMatrix(testPred, test_data$Loan_Status)
-```
+#confusionMatrix(testPred, test_data$Loan_Status) #verify
+DT_model <- confusionMatrix(testPred, test_data$Loan_Status)$byClass
+tabview <- data.frame(DT_model)
 
-
-Decision Tree model shows an accuracy of 80.24 %.
-
-Let's have a tabular view of DT model and its matrices.
-
-
-```{r}
-
-DT_Model <- confusionMatrix(testPred, test_data$Loan_Status)$byClass
-
-tabview <- data.frame(DT_Model)
-
+#present statistics as kable table
 tabview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
 ```
-Comment on this.
+
+For now, we note the Decision Tree model's performance based on these classification metrics. Later, we'll provide an in-depth interpretation of these statistics vs. those of our Random Forest and Gradient Boosting models.
+
 
 # 3. Random Forests
 
-3. Using the same dataset on Loan Approval Status, please use Random Forests to predict on loan approval status. Again, please be sure to walk us through the steps you took to get to your final model. (50 points)
+Random forests are one the most popular machine learning algorithms. They can be used for classification or regression, deal with a large number of features, and generally are so successful because they provide a good predictive performance, low incidence of over-fitting, and easy interpret-ability. 
 
-Random forests are one the most popular machine learning algorithms. They are so successful because they provide in general a good predictive performance, low overfitting, and easy interpretability. RF can be used for classification or regression. It can deal with Large number of features.
+More features are generally better for this model, but we'll exclude `Gender` and `Dependents` from consideration because of their weak correlation with `Loan_Status`.
 
-More features better for the model, we will exclude Gender variable because logically it is not correct that for Female loan approval will be less and more for Male. Most of data having zero dependants, so exclude Dependents. 
-
-Data Transformation for RF:
-
-* Convert Factor variables to numeric
-* Change variables  Education and Property_Area from Categorical to numeric 
-  
-  + Education: Graduate = 1 and Not Graduate = 0
-  + Property_Area: Semiurban = 2, Urban = 1, Rural = 0
-  + Married: Yes = 1, No = 0
-  + Self_Employed: Yes = 1, No = 0
+To prepare our data for Random Forest modeling, we convert variables of type factor to numeric, remove the `Gender` and `Dependents` variables from consideration, and change variables `Education` and `Property_Area` from categorical to numerical type:
 
 ```{r}
+# Remove Gender, Dependents
 loan_RF <- subset(loan, select = -c(Gender, Dependents))
 
-# Convert Dependents, Credit_History numeric type
-
-#loan_RF$Dependents <- as.numeric(loan_RF$Dependents)
+# Convert Credit_History to numeric type
 loan_RF$Credit_History <- as.numeric(loan_RF$Credit_History)
 
 # Change Variables values
 loan_RF$Education <- ifelse(loan_RF$Education=="Graduate", 1, 0)
 loan_RF$Married <- ifelse(loan_RF$Married=="Yes", 1, 0)
 loan_RF$Self_Employed <- ifelse(loan_RF$Self_Employed=="Yes", 1, 0)
-
-
 
 if(loan_RF$Property_Area=="Semiurban")
   {
@@ -538,12 +470,10 @@ if(loan_RF$Property_Area=="Semiurban")
     loan_RF$Property_Area <- 0
 }
 
-head(loan_RF)
-
+#head(loan_RF) #verify output
 ```
 
-Split data in to train and test set. 
-
+Using the built-in **sample** function we perform a train test split *with replacement* such that 75% of our data will be training data and 25% will be testing data: 
 
 ```{r}
 set.seed(1247)
@@ -552,24 +482,19 @@ ind <- sample(2, nrow(loan_RF), replace = TRUE, prob = c(0.75, 0.25))
 train_RF <- loan_RF[ind == 1, ]
 test_RF <- loan_RF[ind == 2, ]
 
-dim(train_RF)
-dim(test_RF)
+#Verify dimensions of each set
+#dim(train_RF)
+#dim(test_RF)
 
 ```
 
-Random Forest Model building
+The Random Forest model helps with feature selection based on importance and avoids over-fitting. We'll lean on this functionality in adapting our 2nd model based on the feature importance specified during the building of our first model.
 
-Helps with feature selection based on importance and avoids over-fitting.
+With our data properly pre-processed and a train-test split performed, we utilize R's built-in **RandomForest** function to first help in determining the optimal value for `mtry`, and then train our model using this value.
 
-Steps:
+## RF Model 1
 
-* Draw ntree bootstrap samples
-* For each bootstrap sample, grow un-pruned tree by choosing best split based on random sample of mtry predictors at each node
-* Predict test data using majority votes for classification and average for regression based on ntrees
-
-##### Random Forest Model 1
-
-Create first model with all variables except gender and Dependents.
+We determine the optimal `mtry` value (2) based on the lowest corresponding OOB rate, and then create the first model with all variables except `Gender` and `Dependents`:
 
 ```{r}
 library(randomForest)
@@ -584,12 +509,7 @@ oob_err <- err[nrow(err), "OOB"]
 print(paste("For mtry : ", i , "OOB Error Rate : ", round(oob_err, 4)))
 }
 
-```
-
-From above OOB Error Rate, mtry = 2 shows less error. We will set mtry = 2 for RF model.
-
-```{r}
-set.seed(35)
+#set.seed(35)
 rf_1 = randomForest(Loan_Status ~ . , data = train_RF, mtry = 2)
 print(rf_1)
 
@@ -597,12 +517,13 @@ print(rf_1)
 print(importance(rf_1, type=2))
 ```
 
-From the random forest shown above we can conclude that Credit_History, Applicant_Income, CoapplicantIncome, and Loan_Amount are the most important factors when deciding if someone will be approved for a loan or not. The model has a 18.04% error which means we can predict with `r 100 - 18.04`% accuracy.
+We note an OOB error rate of 17.82% and will compare the output statistics of the confusion matrix with those of the second model to determine which has a greater predictive accuracy.
 
-##### Random Forest Model 2
+From the above feature importance rankings, we observe that `Credit_History`, `Applicant_Income`, `Loan_Amount`, and `CoapplicantIncome` have the highest `MeanDecreaseGini` scores. They provide the largest average gain of purity and are thus the most important features. We will include these features and omit all others in our construction of model 2.
 
-This model we select only important factors such as Credit_History, Applicant_Income, CoapplicantIncome, and Loan_Amount.
+## RF Model 2
 
+We create the second model in the same manner as the first model. This time we only consider important factors such as `Credit_History`, `Applicant_Income`, `CoapplicantIncome`, and `Loan_Amount`:
 
 ```{r}
 set.seed(102)
@@ -620,28 +541,22 @@ print(rf_2)
 
 ```
 
+We note an OOB error rate of 18.04% and will compare the output statistics of the confusion matrix with those of the first model to determine which has a greater predictive accuracy.
 
-##### Prediction
+## Model Comparison
 
-We will do the model evaluation, apply RF model 1 and model 2 with test dataset to see the accuracy and other matrices. 
-
+We evaluate our models by applying **RF Model 1** and **RF Model 2** to the test data set. We utilize the **confusionMatrix** function from the caret library and present our statistics as a kable table to glean more insight regarding the comparative statistics between each model's performance:
 
 ```{r}
+
+#Tabular view of RF model 1 and Model 2 matrix comparison
+
 rf_predict_1 <- predict(rf_1, newdata = test_RF)
-confusionMatrix(rf_predict_1, test_RF$Loan_Status)
+#confusionMatrix(rf_predict_1, test_RF$Loan_Status)
+RF_Model_1 <- confusionMatrix(rf_predict_1, test_RF$Loan_Status)$byClass
 
 rf_predict_2 <- predict(rf_2, newdata = test_RF)
-confusionMatrix(rf_predict_2, test_RF$Loan_Status)
-
-```
-
-We have an accuracy of 80 % for first model and 81.82 %for second model.
-
-Let's have a tabular view of RF model 1 and Model 2 matrix comparison.
-
-```{r}
-
-RF_Model_1 <- confusionMatrix(rf_predict_1, test_RF$Loan_Status)$byClass
+#confusionMatrix(rf_predict_2, test_RF$Loan_Status)
 RF_Model_2 <- confusionMatrix(rf_predict_2, test_RF$Loan_Status)$byClass
 
 tabularview <- data.frame(RF_Model_1, RF_Model_2)
@@ -649,305 +564,9 @@ tabularview <- data.frame(RF_Model_1, RF_Model_2)
 tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
 ```
 
+The models share the same Sensitivity, Recall, Prevalence, and Detection Rates, but for every other metric (aside from Detection Prevalence) RF Model 2 outperforms RF Model 1. Based on the output statistics above **RF Model 2 is superior to RF Model 1** and will serve as our chosen Random Forest model.
 
-# 4. Gradient Boosting
+For now, we note the Random Forest model's performance based on these classification metrics. Later, we'll provide an in-depth interpretation of these statistics vs. those of our Decision Tree and Gradient Boosting models.
 
-[insert background]
 
-In boosting, each new tree is a fit on a modified version of the original data set. Gradient Boosting trains many models in a gradual, additive and sequential manner. 
-
-Our approach: 
-
-* **Pre-process data**: normalize independent numeric variables, drop impertinent variables, convert categorical variables to numeric, binary scale, convert dependent variable to factor type
-* **Train-test split**: we partition our data with a 75% train, 25% test split
-* **Matrix conversions**: we convert our dataframes to matrices as required to be read in to XGBoost
-* **Train model**: initialize parameters and play with variable values to observe the effect
-* **Optimize model**: using error values and feature importance rankings, we optimize our model for the highest predictive accuracy
-* **Output statistics**: verify the accuracy of our model using a confusion matrix and then using caret's built-in function.
-
-```{r}
-#Pre-process data
-#Normalize independent numeric vars
-
-#store sum of ApplicantIncome and CoapplicantIncome in ApplicantIncome
-loan$ApplicantIncome <- loan$ApplicantIncome + loan$CoapplicantIncome
-
-#calculate skewness prior to normalization
-skewness(loan$ApplicantIncome, na.rm = TRUE)
-#skewness(loan$CoapplicantIncome, na.rm = TRUE)
-skewness(loan$LoanAmount, na.rm = TRUE)
-
-#normalization: account for outliers with log transform
-loan$ApplicantIncome <- log10(loan$ApplicantIncome)
-#loan$CoapplicantIncome <- log10(loan$CoapplicantIncome)
-loan$LoanAmount <- log10(loan$LoanAmount)
-
-#calculate skewness after normalization
-skewness(loan$ApplicantIncome, na.rm = TRUE)
-#skewness(loan$CoapplicantIncome, na.rm = TRUE) #produced NaN - dealt with via summing
-skewness(loan$LoanAmount, na.rm = TRUE)
-```
-
-Based on the improved skewness values our normalization was a success and these (2) independent, numeric variables are now prepared to be included in our Gradient Boosting model.
-
-```{r}
-#2. drop impertinent variables, convert to numeric, and change variable values
-loan_GB <- subset(loan, select = -c(Gender, Property_Area, CoapplicantIncome)) #since CoapplicantIncome is incorproated with ApplicantIncome
-
-# Convert Dependents, Credit_History numeric type
-loan_GB$Dependents <- as.numeric(loan_GB$Dependents)
-loan_GB$Credit_History <- as.numeric(loan_GB$Credit_History)
-
-# Change Variables values
-#loan_GB$Gender <- ifelse(loan_GB$Gender=="Male", 1, 0)
-loan_GB$Education <- ifelse(loan_GB$Education=="Graduate", 1, 0)
-loan_GB$Married <- ifelse(loan_GB$Married=="Yes", 1, 0)
-loan_GB$Self_Employed <- ifelse(loan_GB$Self_Employed=="Yes", 1, 0)
-
-#3. convert Loan_Status to type factor
-loan_GB$Loan_Status <- ifelse(loan_GB$Loan_Status=="Y", 1, 0)
-#loan$Loan_Status <- as.factor(loan$Loan_Status)
-
-head(loan_GB) #verify all numeric inputs
-```
-
-At this point pre-processing of our data is complete and we've verified that we will indeed be feeding our model all numeric inputs. Next, we partition our data:
-
-```{r}
-#Partition data
-set.seed(1234)
-
-#loan_GB
-ind <- sample(2, nrow(loan_GB), replace = TRUE, prob = c(0.75, 0.25))
-train_GB <- loan_GB[ind == 1, ]
-test_GB <- loan_GB[ind == 2, ]
-
-#dim(train_GB) #457 x 10
-#dim(test_GB) #157 x 10
-```
-
-```{r}
-#Create train, test matrices - one hot encoding for factor variables
-library(Matrix)
-trainm <- sparse.model.matrix(Loan_Status ~ ., data = train_GB)
-#head(trainm)
-train_label <- train_GB[,"Loan_Status"]
-train_matrix <- xgb.DMatrix(data = as.matrix(trainm),label = train_label )
-
-testm <- sparse.model.matrix(Loan_Status ~ ., data = test_GB)
-test_label <- test_GB[,"Loan_Status"]
-test_matrix <- xgb.DMatrix(data = as.matrix(testm),label = test_label )
-```
-
-```{r}
-#Parameters
-nc <- length(unique(train_label)) #number of classes
-xgb_params <- list("objective" = "multi:softprob",
-                   "eval_metric" = "mlogloss",
-                   "num_class" = nc)
-watchlist <- list(train = train_matrix, test = test_matrix)
-
-#extreme Gradient Boosting Model
-GB_model <- xgb.train(params = xgb_params,
-                      data = train_matrix,
-                      nrounds = 5, #run 100 iterations 1st then update based on test error value
-                      watchlist = watchlist,
-                      eta = 0.1) #inc eta value increased accuracy by 1
-
-```
-
-```{r}
-#error plot
-e <- data.frame(GB_model$evaluation_log)
-plot(e$iter, e$train_mlogloss)
-lines(e$iter, e$test_mlogloss, col = 'red')
-
-#determine when test error was lowest
-min(e$test_mlogloss) #0.456353 lowest error
-e[e$test_mlogloss == 0.456353,] #5th iteration
-
-#feature importance
-imp <- xgb.importance(colnames(train_matrix), model=GB_model)
-print(imp) #higher Gain means higher feature importance
-```
-
-```{r}
-#prediction and confusion matrix from train data
-p_train <- predict(GB_model, newdata = train_matrix)
-pred_train <- matrix(p_train, nrow = nc, ncol = length(p_train)/nc) %>%
-    t() %>% #matrix transpose
-    data.frame() %>%
-    mutate(label = train_label, max_prob = max.col(.,"last")-1)
-
-tab_train <- table(Prediction = pred_train$max_prob, Actual = pred_train$label)
-print(tab_train)
-print(paste('Misclassification Error with Train data', round(1 - sum(diag(tab_train))/sum(tab_train),3)))
-
-#prediction and confusion matrix from test data
-p_test <- predict(GB_model, newdata = test_matrix)
-pred_test <- matrix(p_test, nrow = nc, ncol = length(p_test)/nc) %>%
-    t() %>% #matrix transpose
-    data.frame() %>%
-    mutate(label = test_label, max_prob = max.col(.,"last")-1)
-
-tab_test <- table(Prediction = pred_test$max_prob, Actual = pred_test$label)
-print(tab_test)
-print(paste('Misclassification Error with Test data', round(1 - sum(diag(tab_test))/sum(tab_test),3)))
-```
-
-## XGBoost Model 2
-
-Based on the weight of feature importance, we could disclude Loan_Amount_Term, Dependents, Self_Employed, Education, Married, and Gender. We revisit the model without these terms to observe the effect on accuracy:
-
-```{r}
-#2. drop impertinent variables, convert to numeric, and change variable values
-loan_GB2 <- subset(loan, select = -c(CoapplicantIncome, Gender, Loan_Amount_Term, Dependents, Self_Employed, Education, Married, Property_Area))
-
-# Convert Dependents, Credit_History numeric type
-loan_GB2$Credit_History <- as.numeric(loan_GB2$Credit_History)
-
-#3. convert Loan_Status to type factor
-loan_GB2$Loan_Status <- ifelse(loan_GB2$Loan_Status=="Y", 1, 0)
-#loan$Loan_Status <- as.factor(loan$Loan_Status)
-
-#head(loan_GB2) #verify all numeric inputs
-```
-
-At this point pre-processing of our data is complete and we've verified that we will indeed be feeding our model all numeric inputs. Next, we partition our data:
-
-```{r}
-#Partition data
-set.seed(1234)
-
-#loan_GB
-
-ind <- sample(2, nrow(loan_GB2), replace = TRUE, prob = c(0.75, 0.25))
-train_GB2 <- loan_GB2[ind == 1, ]
-test_GB2 <- loan_GB2[ind == 2, ]
-
-dim(train_GB2) #457 x 4
-dim(test_GB2) #157 x 4
-```
-
-```{r}
-#Create train, test matrices - one hot encoding for factor variables
-library(Matrix)
-trainm2 <- sparse.model.matrix(Loan_Status ~ ., data = train_GB2) # rmv Loan_Status col (?)
-#head(trainm2)
-train_label2 <- train_GB2[,"Loan_Status"]
-train_matrix2 <- xgb.DMatrix(data = as.matrix(trainm2),label = train_label2 )
-
-testm2 <- sparse.model.matrix(Loan_Status ~ ., data = test_GB2)
-test_label2 <- test_GB2[,"Loan_Status"]
-test_matrix2 <- xgb.DMatrix(data = as.matrix(testm2),label = test_label2 )
-
-#Parameters
-nc2 <- length(unique(train_label2)) #number of classes
-xgb_params2 <- list("objective" = "multi:softprob",
-                   "eval_metric" = "mlogloss",
-                   "num_class" = nc2)
-watchlist2 <- list(train = train_matrix2, test = test_matrix2)
-
-#extreme Gradient Boosting Model
-GB_model2 <- xgb.train(params = xgb_params2,
-                      data = train_matrix2,
-                      nrounds = 20, #run 100 iterations 1st then update based on test error value
-                      watchlist = watchlist2,
-                      eta = 0.1) #inc eta value increased accuracy by 1
-
-
-#error plot
-e2 <- data.frame(GB_model2$evaluation_log)
-plot(e2$iter, e2$train_mlogloss)
-lines(e2$iter, e2$test_mlogloss, col = 'red')
-
-#determine when test error was lowest
-min(e2$test_mlogloss) #0.478216 lowest error
-e2[e2$test_mlogloss == 0.478216,] #20th iteration
-
-#feature importance
-imp2 <- xgb.importance(colnames(train_matrix2), model=GB_model2)
-print(imp2) #higher Gain means higher feature importance
-
-#prediction and confusion matrix from test data
-# p2 <- predict(GB_model2, newdata = test_matrix2)
-# pred2 <- matrix(p2, nrow = nc2, ncol = length(p2)/nc2) %>%
-#     t() %>% #matrix transpose
-#     data.frame() %>%
-#     mutate(label = test_label2, max_prob = max.col(.,"last")-1)
-# 
-# table(Prediction = pred2$max_prob, Actual = pred2$label)
-
-#prediction and confusion matrix from train data
-p_train2 <- predict(GB_model2, newdata = train_matrix2)
-pred_train2 <- matrix(p_train2, nrow = nc2, ncol = length(p_train2)/nc2) %>%
-    t() %>% #matrix transpose
-    data.frame() %>%
-    mutate(label = train_label2, max_prob = max.col(.,"last")-1)
-
-tab_train2 <- table(Prediction = pred_train2$max_prob, Actual = pred_train2$label)
-print(tab_train2)
-print(paste('Misclassification Error with Train data', round(1 - sum(diag(tab_train2))/sum(tab_train2),3)))
-
-#prediction and confusion matrix from test data
-p_test2 <- predict(GB_model2, newdata = test_matrix2)
-pred_test2 <- matrix(p_test2, nrow = nc2, ncol = length(p_test2)/nc2) %>%
-    t() %>% #matrix transpose
-    data.frame() %>%
-    mutate(label = test_label2, max_prob = max.col(.,"last")-1)
-
-tab_test2 <- table(Prediction = pred_test2$max_prob, Actual = pred_test2$label)
-print(tab_test2)
-print(paste('Misclassification Error with Test data', round(1 - sum(diag(tab_test2))/sum(tab_test2),3)))
-```
-
-
-The library caret has a function to make prediction. Use the prediction to compute the confusion matrix and see the accuracy score and other matrices.
-
-```{r}
-
-GB_Model_1 <- confusionMatrix(factor(pred_test$max_prob),factor(pred_test$label))$byClass
-GB_Model_2 <- confusionMatrix(factor(pred_test2$max_prob),factor(pred_test2$label))$byClass
-
-tabularview <- data.frame(GB_Model_1, GB_Model_2)
-
-tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
-```
-
-From the above error plot we can see that as our iterations increase, our training error decreases. Our testing error, on the other hand, initially decreases and then increases with each iteration.
-
-
-# 5. Model Comparison (Decision Trees vs. Random Forests vs. Gradient Boosting)
-
-5. Model performance: please compare the models you settled on for problem # 2 – 4. Comment on their relative performance. Which one would you prefer the most? Why? (20 points)
-
-[insert background]
-
-```{r}
-#Present all model statistics on the same graphic
-tabularview <- data.frame(DT_Model, RF_Model_2, GB_Model_1)
-
-tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
-
-```
-
-[comment on the statistics and select a model]
-
-................................................................................
-
-
-# References
-
-https://www.geeksforgeeks.org/k-nn-classifier-in-r-programming/
-https://guru99.com/r-decision-trees.html/
-https://www.geeksforgeeks.org/decision-tree-for-regression-in-r-programming/
-https://data-flair.training/blogs/r-decision-trees/
-https://tutorialspoint.com/r/r_random_forest.htm/
-https://statology.org/random-forest-in-r/
-https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/ (normalization)
-https://appsilon.com/r-xgboost/ (XGBoost)
-http://rstudio-pubs-static.s3.amazonaws.com/368478_bf9700befeba4283a4640a9a1285af22.html (XGBoost)
-https://www.youtube.com/watch?v=woVTNwRrFHE (XGBoost)
-
-
-# Appendix 
+### THE END :)
