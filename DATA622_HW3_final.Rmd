@@ -837,7 +837,7 @@ Where decision trees are lauded for ease of interpretability and speed and rando
 
 # References
 
-###LEFT OFF HERE### proper citations
+In completing this assignment, reference was made to the following:
 
 * Geeks for Geeks. (2020). **K-NN Classifier in R Programming** [article]. Retrieved from: https://www.geeksforgeeks.org/k-nn-classifier-in-r-programming/
 * Guru 99. **Decision Tree in R** [article]. Retrieved from: https://guru99.com/r-decision-trees.html/
