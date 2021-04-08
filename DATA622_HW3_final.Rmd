@@ -28,7 +28,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r library, comment=FALSE, warning=FALSE, message=FALSE }
+```{r library, include= FALSE}
 library(tidyverse)
 library(caret)
 library(palmerpenguins)
@@ -41,17 +41,20 @@ library(MASS)
 library(mvtnorm)
 library(class)
 library(dplyr)
+library(mice)
+library(corrplot)
 library(rpart)
 library(rpart.plot)
 library(party)
 library(randomForest)
 library(gbm)
-library(mice)
 library(plyr)
 library(gridExtra)
+library(randomForest)
 library(kableExtra)
 library(gbm)
 library(xgboost)      # a faster implementation of gbm
+library(Matrix)
 ```
 
 # Background
@@ -206,7 +209,6 @@ glimpse(loan)
 summary(loan)
 ```
 
-
 We're dealing with a 614 observation x 13 variable dataframe with:
 
 * `Loan_Status`, a categorical, character-based variable, as our dependent variable,
@@ -253,8 +255,6 @@ To identify features that carry promise vs. those that may not, we consider a co
 
 ```{r message=FALSE}
 #Correlation matrix for numeric variables
-library(corrplot)
-
 #Loan Approved correlation
 loan_corr_y <- loan %>%
     filter(Loan_Status == "Y") %>%
@@ -286,12 +286,13 @@ loan %>%
         geom_histogram(bins=90,color="darkblue", fill="lightblue")
 
 ```
+
 From the above figures we observe that:
 
 * `ApplicantIncome` and `LoanAmount` appear to be right skewed normal with a number of noteworthy outliers, and
 * `CoapplicantIncome` has a peak at 0 joined with an otherwise right skewed normal distribution.
 
-Scaling is not necessary for Decision Trees or Random Forests but may prove useful for Gradient Descent. Thus, we won't act on normalization at this point, we'll just note the point for future consideration.
+Scaling is not necessary for Decision Trees or Random Forests but may prove useful for Gradient Descent. Thus, we won't act on transformation at this point, we'll just note the point for future consideration.
 
 Next, we explore our categorical variables:
 
@@ -424,21 +425,21 @@ print(paste('Misclassification error for testing data', round(1 - sum(diag(testt
 
 From the output statistics above, we can draw our model's performance as:
 
-* Train dataset accuracy : `r (1 - 0.177) * 100`, error rate: `r 0.177 * 100`
-* Test dataset accuracy : `r (1 - 0.198) * 100`, error rate:`r 0.198 * 100`
+* Train dataset accuracy : `r (1 - 0.179) * 100`, error rate: `r 0.179 * 100`
+* Test dataset accuracy : `r (1 - 0.192) * 100`, error rate:`r 0.192 * 100`
 
 With these statistics in mind, we utilize the **confusionMatrix** function from the caret library and present our statistics as a kable table to glean more insight regarding our model's performance:
 
 ```{r}
 #confusionMatrix(testPred, test_data$Loan_Status) #verify
-DT_model <- confusionMatrix(testPred, test_data$Loan_Status)$byClass
-tabview <- data.frame(DT_model)
+DT_Model <- confusionMatrix(testPred, test_data$Loan_Status)$byClass
+tabview <- data.frame(DT_Model)
 
 #present statistics as kable table
 tabview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
 ```
 
-For now, we note the Decision Tree model's performance based on these classification metrics. Later, we'll provide an in-depth interpretation of these statistics vs. those of our Random Forest and Gradient Boosting models.
+For now, we note the Decision Tree model's performance based on these classification metrics (ie. stronger for `Pos Pred Value`, weaker for `Neg Pred Value`). Later, we'll provide an in-depth interpretation of these statistics vs. those of our Random Forest and Gradient Boosting models.
 
 
 # 3. Random Forests
@@ -494,11 +495,9 @@ With our data properly pre-processed and a train-test split performed, we utiliz
 
 ## RF Model 1
 
-We determine the optimal `mtry` value (2) based on the lowest corresponding OOB rate, and then create the first model with all variables except `Gender` and `Dependents`:
+We determine the optimal `mtry` value (2) based on the lowest corresponding OOB rate, create the first model with all variables except `Gender` and `Dependents`, and then visit the corresponding Confusion Matrix and feature importance scores:
 
 ```{r}
-library(randomForest)
-
 set.seed(222)
 
 for (i in 1:10)
@@ -517,9 +516,9 @@ print(rf_1)
 print(importance(rf_1, type=2))
 ```
 
-We note an OOB error rate of 17.82% and will compare the output statistics of the confusion matrix with those of the second model to determine which has a greater predictive accuracy.
+We note an OOB (out of the box) error rate of 17.82% and will compare the output statistics of the confusion matrix with those of the second model to determine which has a greater predictive accuracy.
 
-From the above feature importance rankings, we observe that `Credit_History`, `Applicant_Income`, `Loan_Amount`, and `CoapplicantIncome` have the highest `MeanDecreaseGini` scores. They provide the largest average gain of purity and are thus the most important features. We will include these features and omit all others in our construction of model 2.
+From the above feature importance scores, we observe that `Credit_History`, `Applicant_Income`, `Loan_Amount`, and `CoapplicantIncome` have the highest `MeanDecreaseGini` scores. They provide the largest average gain of purity and are thus the most important features. We will include these features and omit all others in our construction of model 2.
 
 ## RF Model 2
 
@@ -564,9 +563,289 @@ tabularview <- data.frame(RF_Model_1, RF_Model_2)
 tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
 ```
 
-The models share the same Sensitivity, Recall, Prevalence, and Detection Rates, but for every other metric (aside from Detection Prevalence) RF Model 2 outperforms RF Model 1. Based on the output statistics above **RF Model 2 is superior to RF Model 1** and will serve as our chosen Random Forest model.
+The models share the same Sensitivity, Recall, Prevalence, and Detection Rates, but for every other metric RF Model 2 outperforms RF Model 1. Based on the output statistics above **RF Model 2 is superior to RF Model 1** and will serve as our chosen Random Forest model. This is a noteworthy result being that more features are typically better and we elected the model with fewer features.
 
 For now, we note the Random Forest model's performance based on these classification metrics. Later, we'll provide an in-depth interpretation of these statistics vs. those of our Decision Tree and Gradient Boosting models.
 
 
-### THE END :)
+# 4. Gradient Boosting
+
+Boosting is a method for creating an ensemble, or a combination of machine learning models. *Gradient* boosting relies on the belief that the best possible next model, when combined with prior models, reduces how often we misclassify our data. 
+
+It's heralded as one of the most powerful techniques for building predictive models and offers numerous options for implementation. We'll make use of the **XGBoost** (eXtreme Gradient Boosting) distributed gradient library due to its promise of flexibility, portability, and efficiency.
+
+For our purposes, we're dealing with a categorical dependent variable, and will build a Gradient Boosting model from the loan approval dataset to provide `Loan_Status` predictions (ie. Approve or Reject).
+
+To prepare our data for Gradient Boost modeling, we verify our numeric variable's skewness, perform a **log()** transform on each variable, and then re-verify the skewness to observe whether or not there was improvement:
+
+```{r}
+#Pre-process data: normalize independent numeric vars
+
+#store sum of ApplicantIncome and CoapplicantIncome in ApplicantIncome
+loan$ApplicantIncome <- loan$ApplicantIncome + loan$CoapplicantIncome
+
+#calculate skewness prior to transformation
+skewness(loan$ApplicantIncome, na.rm = TRUE)
+#skewness(loan$CoapplicantIncome, na.rm = TRUE)
+skewness(loan$LoanAmount, na.rm = TRUE)
+
+#transformation: account for outliers with log transform
+loan$ApplicantIncome <- log10(loan$ApplicantIncome)
+#loan$CoapplicantIncome <- log10(loan$CoapplicantIncome)
+loan$LoanAmount <- log10(loan$LoanAmount)
+
+#calculate skewness after transformation
+skewness(loan$ApplicantIncome, na.rm = TRUE)
+#skewness(loan$CoapplicantIncome, na.rm = TRUE) #produced NaN - dealt with via summing
+skewness(loan$LoanAmount, na.rm = TRUE)
+```
+
+After encountering issues transforming `CoapplicantIncome` and realizing a simplification may be in store, the sum of `ApplicantIncome` and `CoapplicantIncome` was stored as one in `ApplicantIncome`. 
+
+Based on the improved skewness values, we see that our transformation was a success and these (2) independent, numeric variables are now prepared to be included in our Gradient Boosting model.
+
+As we continue processing our data, we drop impertinent variables, convert categorical variables to a binary scale, and convert our dependent variable to type factor:
+
+```{r}
+#Data pre-processing: drop impertinent variables, convert to numeric, and change variable values
+loan_GB <- subset(loan, select = -c(Gender, Property_Area, CoapplicantIncome)) #since CoapplicantIncome is incorproated with ApplicantIncome
+
+# Convert Dependents, Credit_History numeric type
+loan_GB$Dependents <- as.numeric(loan_GB$Dependents)
+loan_GB$Credit_History <- as.numeric(loan_GB$Credit_History)
+
+# Change Variables values
+#loan_GB$Gender <- ifelse(loan_GB$Gender=="Male", 1, 0)
+loan_GB$Education <- ifelse(loan_GB$Education=="Graduate", 1, 0)
+loan_GB$Married <- ifelse(loan_GB$Married=="Yes", 1, 0)
+loan_GB$Self_Employed <- ifelse(loan_GB$Self_Employed=="Yes", 1, 0)
+
+#3. convert Loan_Status to type factor
+loan_GB$Loan_Status <- ifelse(loan_GB$Loan_Status=="Y", 1, 0)
+#loan$Loan_Status <- as.factor(loan$Loan_Status)
+
+#head(loan_GB) #verify all numeric inputs
+```
+
+At this point pre-processing of our data is complete and we've verified that we will indeed be feeding our model all numeric inputs.
+
+## GB Model 1
+
+We use the built-in **sample** function to perform a train-test split *with replacement* (75% training, 25% testing) and then convert our dataframes to matrices (with corresponding labels) as required to be modeled via **XGBoost**:
+
+```{r}
+#Partition data
+set.seed(1234)
+
+#loan_GB
+ind <- sample(2, nrow(loan_GB), replace = TRUE, prob = c(0.75, 0.25))
+train_GB <- loan_GB[ind == 1, ]
+test_GB <- loan_GB[ind == 2, ]
+
+#dim(train_GB) #457 x 10
+#dim(test_GB) #157 x 10
+
+#Create train, test matrices - one hot encoding for factor variables
+trainm <- sparse.model.matrix(Loan_Status ~ ., data = train_GB)
+#head(trainm)
+train_label <- train_GB[,"Loan_Status"]
+train_matrix <- xgb.DMatrix(data = as.matrix(trainm),label = train_label )
+
+testm <- sparse.model.matrix(Loan_Status ~ ., data = test_GB)
+test_label <- test_GB[,"Loan_Status"]
+test_matrix <- xgb.DMatrix(data = as.matrix(testm),label = test_label )
+
+```
+
+We specify our parameters, create our first model with all variables except `Gender` and `Dependents` (due to low correlation with `Loan_Status`), optimize `nrounds` (model parameter) for the lowest corresponding mlogloss rate, optimize `eta` (model parameter) for greatest perceived accuracy, visualize corresponding Confusion Matrices and misclassification error rates, and observe feature importance scores for our first model:
+
+```{r}
+#Parameters
+nc <- length(unique(train_label)) #number of classes
+xgb_params <- list("objective" = "multi:softprob",
+                   "eval_metric" = "mlogloss",
+                   "num_class" = nc)
+watchlist <- list(train = train_matrix, test = test_matrix)
+
+#extreme Gradient Boosting Model
+GB_model <- xgb.train(params = xgb_params,
+                      data = train_matrix,
+                      nrounds = 5, #run 100 iterations 1st then update based on test error value
+                      watchlist = watchlist,
+                      eta = 0.1) #inc eta value increased accuracy by 1
+
+#error plot
+#e <- data.frame(GB_model$evaluation_log)
+#plot(e$iter, e$train_mlogloss)
+#lines(e$iter, e$test_mlogloss, col = 'red')
+
+#determine when test error was lowest
+#min(e$test_mlogloss) #0.456353 lowest error
+#e[e$test_mlogloss == 0.456353,] #5th iteration
+
+#prediction and confusion matrix from TRAIN data
+p_train <- predict(GB_model, newdata = train_matrix)
+pred_train <- matrix(p_train, nrow = nc, ncol = length(p_train)/nc) %>%
+    t() %>% #matrix transpose
+    data.frame() %>%
+    mutate(label = train_label, max_prob = max.col(.,"last")-1)
+
+tab_train <- table(Prediction = pred_train$max_prob, Actual = pred_train$label)
+print(tab_train)
+print(paste('Misclassification Error with Train data', round(1 - sum(diag(tab_train))/sum(tab_train),3)))
+
+#prediction and confusion matrix from TEST data
+p_test <- predict(GB_model, newdata = test_matrix)
+pred_test <- matrix(p_test, nrow = nc, ncol = length(p_test)/nc) %>%
+    t() %>% #matrix transpose
+    data.frame() %>%
+    mutate(label = test_label, max_prob = max.col(.,"last")-1)
+
+tab_test <- table(Prediction = pred_test$max_prob, Actual = pred_test$label)
+print(tab_test)
+print(paste('Misclassification Error with Test data', round(1 - sum(diag(tab_test))/sum(tab_test),3)))
+
+#feature importance
+imp <- xgb.importance(colnames(train_matrix), model=GB_model)
+print(imp) #higher Gain means higher feature importance
+```
+
+We note a train-mlogloss (multiclass log loss) value of 0.522107 on five iterations, training data misclassification error rate of 14.7%, and testing misclassification error rate of 15.3. Later, we'll compare the output statistics of the confusion matrix with those of the second model to determine which has a greater predictive accuracy.
+
+From the above feature importance scores, we observe that `Credit_History`, `ApplicantIncome`, and `LoanAmount` have the highest `Gain` scores. We'll omit all other features and utilize just these features to make up our second model.
+
+*Recall: `ApplicantIncome` is now representative of `ApplicantIncome` and `CoapplicantIncome`.*
+
+## GB Model 2
+
+We create the second model in the same manner as the first model. This time we only consider important factors such as `Credit_History`, `Applicant_Income`, and `Loan_Amount`:
+
+```{r}
+#Create train, test matrices - one hot encoding for factor variables
+trainm2 <- sparse.model.matrix(Loan_Status ~ Credit_History + LoanAmount + ApplicantIncome, data = train_GB) 
+#head(trainm2)
+train_label2 <- train_GB[,"Loan_Status"]
+train_matrix2 <- xgb.DMatrix(data = as.matrix(trainm2),label = train_label2 )
+
+testm2 <- sparse.model.matrix(Loan_Status ~ Credit_History + LoanAmount + ApplicantIncome, data = test_GB) 
+test_label2 <- test_GB[,"Loan_Status"]
+test_matrix2 <- xgb.DMatrix(data = as.matrix(testm2),label = test_label2 )
+
+#Parameters
+nc2 <- length(unique(train_label2)) #number of classes
+xgb_params2 <- list("objective" = "multi:softprob",
+                   "eval_metric" = "mlogloss",
+                   "num_class" = nc2)
+watchlist2 <- list(train = train_matrix2, test = test_matrix2)
+
+#extreme Gradient Boosting Model
+GB_model2 <- xgb.train(params = xgb_params2,
+                      data = train_matrix2,
+                      nrounds = 20, #run 100 iterations 1st then update based on test error value
+                      watchlist = watchlist2,
+                      eta = 0.1) #inc eta value increased accuracy by 1
+
+#error plot
+#e2 <- data.frame(GB_model2$evaluation_log)
+#plot(e2$iter, e2$train_mlogloss)
+#lines(e2$iter, e2$test_mlogloss, col = 'red')
+
+#determine when test error was lowest
+#min(e2$test_mlogloss) #0.478216 lowest error
+#e2[e2$test_mlogloss == 0.478216,] #20th iteration
+
+#prediction and confusion matrix from train data
+p_train2 <- predict(GB_model2, newdata = train_matrix2)
+pred_train2 <- matrix(p_train2, nrow = nc2, ncol = length(p_train2)/nc2) %>%
+    t() %>% #matrix transpose
+    data.frame() %>%
+    mutate(label = train_label2, max_prob = max.col(.,"last")-1)
+
+tab_train2 <- table(Prediction = pred_train2$max_prob, Actual = pred_train2$label)
+print(tab_train2)
+print(paste('Misclassification Error with Train data', round(1 - sum(diag(tab_train2))/sum(tab_train2),3)))
+
+#prediction and confusion matrix from test data
+p_test2 <- predict(GB_model2, newdata = test_matrix2)
+pred_test2 <- matrix(p_test2, nrow = nc2, ncol = length(p_test2)/nc2) %>%
+    t() %>% #matrix transpose
+    data.frame() %>%
+    mutate(label = test_label2, max_prob = max.col(.,"last")-1)
+
+tab_test2 <- table(Prediction = pred_test2$max_prob, Actual = pred_test2$label)
+print(tab_test2)
+print(paste('Misclassification Error with Test data', round(1 - sum(diag(tab_test2))/sum(tab_test2),3)))
+```
+
+We note a train-mlogloss (multiclass log loss) value of 0.343374 on twenty iterations, training data misclassification error rate of 14.2%, and testing misclassification error rate of 16.6.
+
+Next, we'll put our models side-by-side to determine which has a greater predictive accuracy.
+
+## Model Comparison
+
+We evaluate our models by applying **GB Model 1** and **GB Model 2** to the test data set. We utilize the **confusionMatrix** function from the caret library and present our statistics as a kable table to glean more insight regarding the comparative statistics between each model's performance:
+
+```{r}
+
+GB_Model_1 <- confusionMatrix(factor(pred_test$max_prob),factor(pred_test$label))$byClass
+GB_Model_2 <- confusionMatrix(factor(pred_test2$max_prob),factor(pred_test2$label))$byClass
+
+tabularview <- data.frame(GB_Model_1, GB_Model_2)
+
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+```
+
+The models share the same Sensitivity, Recall, Prevalence, and Detection Rates, but for every other metric GB Model 1 outperforms GB Model 2. Based on the output statistics above **GB Model 1 is superior to GB Model 2** and will serve as our chosen Gradient Boosting model.
+
+
+# 5. Overall Model Comparison 
+
+We put our strongest Decision Tree, Random Forest, and Gradient Boosting models side-by-side-by-side to interpret their common classification metrics and determine which has the greatest predictive accuracy.
+
+We consider the following classification metrics in consulting each model's Confusion Matrix:
+
+* **Sensitivity (Recall) **: true positive rate. $\frac{TP}{TP + FN}$
+* **Specificity**: true negative rate. $\frac{TN}{TN + FP}$
+* **Pos Pred Value (Precision) **: probability that predicted positive is truly positive. $\frac{TP}{TP + FP}$ 
+* **Neg Pred Value**: probability that predicted negative is truly negative. $\frac{TN}{(TN + FN)}$ 
+* **F1**: harmonic mean of model's precision and recall. $\frac{2 * (Precision * Recall)}{Precision + Recall}$ 
+* **Prevalence**: truly positive observations as proportion of total number of observations. $\frac{TP + FN}{TP + FP + FN + TN}$ 
+* **Detection Rate**: true positives detected as proportion of entire total population. $\frac{TP}{TP + FP + FN + TN}$
+* **Detection Prevalence**: predicted positive events over total number of predictions. $\frac{TP + FP}{TP + FP + FN + TN}$
+* **Balanced Accuracy**: measure of model's that is especially useful when classes are imbalanced. $\frac{Sensitivity + Specificity}{2}$
+
+These models are all applied to the test data set and make use of the **confusionMatrix** function from the caret library. We present the corresponding common classification metrics as a kable table to glean more insight regarding the relative strength of each model's performance:
+
+```{r}
+#Present all model statistics on the same graphic
+tabularview <- data.frame(DT_Model, RF_Model_2, GB_Model_1)
+
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+
+```
+
+Consulting the above output table, we observe that **DT Model** has the strongest performance for `Specificity`, `Pos Pred Value`, `Precision`, and `F1` whereas **GB Model 1** has the strongest performance for `Sensitivity`, `Neg Pred Value` and `Balanced Accuracy`. Thus, **DT Model** performs better when predicting loan approvals while **GB Model 1** performs better when predicting loan rejections.
+
+## Analysis
+
+Decision tree's often raise concerns regarding over-fitting, bias and variance error because of their simplicity, and random forests are meant to address these concerns by accounting for a collection of decision trees to come to a single, aggregated result. We found it surprising that the decision tree model outperformed the random forest model. This may have been because of how we implemented the model or it may have simply been a poor situation for random forests. 
+
+Where decision trees are lauded for ease of interpretability and speed and random forests are lauded for how they handle noise, gradient boosting is known to handle unbalanced data the best. **We would recommend gradient boosting** for the simple fact that we're dealing with imbalanced classes (recall 192 N's, 422 Y's) and **GB Model 1** is the best performing model across the board when this is taken into account.
+
+................................................................................
+
+
+# References
+
+###LEFT OFF HERE### proper citations
+
+* Geeks for Geeks. (2020). **K-NN Classifier in R Programming** [article]. Retrieved from: https://www.geeksforgeeks.org/k-nn-classifier-in-r-programming/
+* Guru 99. **Decision Tree in R** [article]. Retrieved from: https://guru99.com/r-decision-trees.html/
+* Geeks for Geeks. (2020). **Decision Tree for Regression in R Programming** [article]. Retrieved from: https://www.geeksforgeeks.org/decision-tree-for-regression-in-r-programming/
+* Data Flair. **R Decision Trees** [article]. Retrieved from: https://data-flair.training/blogs/r-decision-trees/
+* Statology. **How to Build Random Forests in R** [article]. Retrieved from: https://statology.org/random-forest-in-r/
+* Data Novia. **Transform Data to Normal Distribution in R** [article]. Retrieved from: https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
+* Dario Radecic. (2021). **Gradient Boosting with R** [article]. Retrieved from: https://appsilon.com/r-xgboost/
+* ZXS107020. (2018). **Multi-Class Classification Using XGBOOST** [article]. Retrieved from: http://rstudio-pubs-static.s3.amazonaws.com/368478_bf9700befeba4283a4640a9a1285af22.html
+* Bharatendra Rai. (2017). **eXtreme Gradient Boosting XGBoost Algorithm with R** [video]. Retrieved from: https://www.youtube.com/watch?v=woVTNwRrFHE
+* Christian Thieme. (2021). **Understanding Common Classification Metrics** [article]. Retrieved from: https://towardsdatascience.com/understanding-common-classification-metrics-titanic-style-8b8a562d3e32
