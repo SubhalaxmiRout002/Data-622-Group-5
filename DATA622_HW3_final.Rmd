@@ -425,8 +425,8 @@ print(paste('Misclassification error for testing data', round(1 - sum(diag(testt
 
 From the output statistics above, we can draw our model's performance as:
 
-* Train dataset accuracy : `r (1 - 0.179) * 100`, error rate: `r 0.179 * 100`
-* Test dataset accuracy : `r (1 - 0.192) * 100`, error rate:`r 0.192 * 100`
+* Train dataset accuracy : `r (1 - round(1 - sum(diag(tab))/sum(tab),3)) * 100`%, error rate: `r round(1 - sum(diag(tab))/sum(tab),3)* 100`%.
+* Test dataset accuracy : `r (1 - round(1 - sum(diag(testtab))/sum(testtab),3)) * 100`, error rate:`r round(1 - sum(diag(testtab))/sum(testtab),3) * 100`%.
 
 With these statistics in mind, we utilize the **confusionMatrix** function from the caret library and present our statistics as a kable table to glean more insight regarding our model's performance:
 
@@ -520,7 +520,7 @@ print(rf_1)
 print(importance(rf_1, type=2))
 ```
 
-We note an OOB (out of the box) error rate of 17.82% and will compare the output statistics of the confusion matrix with those of the second model to determine which has a greater predictive accuracy.
+We note an OOB (out of the box) error rate of `r round(rf_1$err.rate[500,1],4)*100`% and will compare the output statistics of the confusion matrix with those of the second model to determine which has a greater predictive accuracy.
 
 From the above feature importance scores, we observe that `Credit_History`, `Applicant_Income`, `Loan_Amount`, and `CoapplicantIncome` have the highest `MeanDecreaseGini` scores. They provide the largest average gain of purity and are thus the most important features. We will include these features and omit all others in our construction of model 2.
 
@@ -544,7 +544,7 @@ print(rf_2)
 
 ```
 
-We note an OOB error rate of 18.04% and will compare the output statistics of the confusion matrix with those of the first model to determine which has a greater predictive accuracy.
+We note an OOB error rate of `r round(rf_2$err.rate[500,1],4)*100`% and will compare the output statistics of the confusion matrix with those of the first model to determine which has a greater predictive accuracy.
 
 ## Model Comparison
 
@@ -683,7 +683,8 @@ GB_model <- xgb.train(params = xgb_params,
                       data = train_matrix,
                       nrounds = 5, #run 100 iterations 1st then update based on test error value
                       watchlist = watchlist,
-                      eta = 0.1) #inc eta value increased accuracy by 1
+                      eta = 0.1, seed = 186
+                      ) #inc eta value increased accuracy by 1
 
 #error plot
 #e <- data.frame(GB_model$evaluation_log)
@@ -719,9 +720,10 @@ print(paste('Misclassification Error with Test data', round(1 - sum(diag(tab_tes
 #feature importance
 imp <- xgb.importance(colnames(train_matrix), model=GB_model)
 print(imp) #higher Gain means higher feature importance
+
 ```
 
-We note a train-mlogloss (multiclass log loss) value of 0.522107 on five iterations, training data misclassification error rate of 14.7%, and testing misclassification error rate of 15.3. Later, we'll compare the output statistics of the confusion matrix with those of the second model to determine which has a greater predictive accuracy.
+We note a train-mlogloss (multiclass log loss) value of `r GB_model$evaluation_log[5,2]` on five iterations, training data misclassification error rate of `r round(1 - sum(diag(tab_train))/sum(tab_train),3)*100`%, and testing misclassification error rate of `r round(1 - sum(diag(tab_test))/sum(tab_test),3)*100`%. Later, we'll compare the output statistics of the confusion matrix with those of the second model to determine which has a greater predictive accuracy.
 
 From the above feature importance scores, we observe that `Credit_History`, `ApplicantIncome`, and `LoanAmount` have the highest `Gain` scores. We'll omit all other features and utilize just these features to make up our second model.
 
@@ -754,7 +756,8 @@ GB_model2 <- xgb.train(params = xgb_params2,
                       data = train_matrix2,
                       nrounds = 20, #run 100 iterations 1st then update based on test error value
                       watchlist = watchlist2,
-                      eta = 0.1) #inc eta value increased accuracy by 1
+                      eta = 0.1, seed = 606 
+                      ) #inc eta value increased accuracy by 1
 
 #error plot
 #e2 <- data.frame(GB_model2$evaluation_log)
@@ -788,7 +791,8 @@ print(tab_test2)
 print(paste('Misclassification Error with Test data', round(1 - sum(diag(tab_test2))/sum(tab_test2),3)))
 ```
 
-We note a train-mlogloss (multiclass log loss) value of 0.343374 on twenty iterations, training data misclassification error rate of `r round(1 - sum(diag(tab_train2))/sum(tab_train2),3)*100`%, and testing misclassification error rate of `r round(1 - sum(diag(tab_test2))/sum(tab_test2),3)*100`%.
+
+We note a train-mlogloss (multiclass log loss) value of `r GB_model2$evaluation_log[20,2]` on twenty iterations, training data misclassification error rate of `r round(1 - sum(diag(tab_train2))/sum(tab_train2),3)*100`%, and testing misclassification error rate of `r round(1 - sum(diag(tab_test2))/sum(tab_test2),3)*100`%.
 
 Next, we'll put our models side-by-side to determine which has a greater predictive accuracy.
 
