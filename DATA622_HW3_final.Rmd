@@ -253,7 +253,7 @@ Imputation was a success and thus our data pre-processing has been completed. We
 
 To identify features that carry promise vs. those that may not, we consider a correlation matrix for our numeric variables: 
 
-```{r message=FALSE}
+```{r message=FALSE, fig.height=6, fig.width=6, fig.align='center'}
 #Correlation matrix for numeric variables
 #Loan Approved correlation
 loan_corr_y <- loan %>%
@@ -261,14 +261,14 @@ loan_corr_y <- loan %>%
     select_if(is.numeric) %>%
     cor()
 
-corrplot(loan_corr_y, title="Loan Approved",type = "lower")
+corrplot(loan_corr_y, title="Loan Approved",type = "lower", mar=c(0,0,1,0))
 
 #Loan Rejected correlation
 loan_corr_n <- loan %>%
     filter(Loan_Status == "N") %>%
     select_if(is.numeric) %>%
     cor()
-corrplot(loan_corr_n, title="Loan Rejected", type = "lower", diag = T)
+corrplot(loan_corr_n, title="Loan Rejected", type = "lower", diag = T, mar=c(0,0,1,0))
 ```
 
 When we consider loan approval and rejection, `LoanAmount` and `ApplicantIncome` have a relatively strong correlation. For loan rejection, `LoanAmount` also appears to have moderate correlation with `CoapplicantIncome`. Remaining features do not have strong correlation and thus we'll only note the aforementioned relationships for consideration for *possible* feature removal later. 
