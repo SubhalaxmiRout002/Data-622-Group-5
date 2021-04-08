@@ -87,7 +87,7 @@ head(penguin_measurements%>% as.data.frame())
 glimpse(penguin_measurements)
 ```
 
-Once we've dropped NA values and selected pertinent variables, we end up with a 333 observation x 5 variable dataframe with:
+Once we've dropped NA values and selected pertinent variables, we end up with a 333 observation x 5 variable data frame with:
 
 * `species`, a categorical variable of type factor, as our dependent variable and
 * `bill_length_mm`, `bill_depth_mm`, `flipper_length_mm`, and `body_mass_g`, all quantitative variables of type dbl or int, as our independent variables.
@@ -207,7 +207,7 @@ summary(loan)
 ```
 
 
-We're dealing with a 614 observation x 13 variable dataframe with:
+We're dealing with a 614 observation x 13 variable data frame with:
 
 * `Loan_Status`, a categorical, character-based variable, as our dependent variable,
 * `ApplicantIncome`, `CoApplicantIncome`,`LoanAmount`, `Loan_Amount_Term`, and `Credit_History`, all quantitative variables of type dbl or int, as independent variables, and
@@ -345,8 +345,8 @@ grid.arrange(p1, p2, p3, p4, p5, p6, nrow = 3, ncol = 2)
 
 From the above figures we can extend the following observations:
 
-* **males outnumber females** and **non self employed outnumber self employed** on a 5:1 basis, **married outnumber non married** on a 2:1 basis, **those without dependents make up a majority**, those that have **graduated make up a majority**, and those with **properties in semiurban area make up a slight majority** of loan applications for the data under our consideration,
-* with regard to loan approval, the only clearer takeaway is that it appears that **those in semiurban areas are approved at a greater rate than those in rural and urban areas**.
+* **males outnumber females** and **non self employed outnumber self employed** on a 5:1 basis, **married outnumber non married** on a 2:1 basis, **those without dependents make up a majority**, those that have **graduated make up a majority**, and those with **properties in semi-urban area make up a slight majority** of loan applications for the data under our consideration,
+* with regard to loan approval, the only clearer takeaway is that it appears that **those in semi-urban areas are approved at a greater rate than those in rural and urban areas**.
 
 While the visualization of our six categorical variables distributions with regard to our dependent variable is enlightening, it doesn't appear to provide clear indication regarding one vs. another's predictive capabilities. There's the possibility that many of these variables will prove impertinent and thus we may be justified in their exclusion from our models later in the process.
 
@@ -389,7 +389,7 @@ Data Preparation for Decision Tree model:
   
 ##### DT Model 1
 
-This model consisits of all attributes excluding Gender. 
+This model consists of all attributes excluding Gender. 
 
 ```{r}
 # Remove Gender, Married, Self_Employed
@@ -498,11 +498,9 @@ Comment on this.
 
 # 3. Random Forests
 
-3. Using the same dataset on Loan Approval Status, please use Random Forests to predict on loan approval status. Again, please be sure to walk us through the steps you took to get to your final model. (50 points)
-
 Random forests are one the most popular machine learning algorithms. They are so successful because they provide in general a good predictive performance, low overfitting, and easy interpretability. RF can be used for classification or regression. It can deal with Large number of features.
 
-More features better for the model, we will exclude Gender variable because logically it is not correct that for Female loan approval will be less and more for Male. Most of data having zero dependants, so exclude Dependents. 
+More features are better for the model, we will exclude the Gender variable because logically it is not correct that for Female loan approval will be less and more for Male. Most of data has zero dependants, so Dependents are excluded. 
 
 Data Transformation for RF:
 
@@ -542,7 +540,7 @@ head(loan_RF)
 
 ```
 
-Split data in to train and test set. 
+Split data in to train and test sets. 
 
 
 ```{r}
@@ -559,7 +557,7 @@ dim(test_RF)
 
 Random Forest Model building
 
-Helps with feature selection based on importance and avoids over-fitting.
+Helps with feature selection based on importance and avoids overfitting.
 
 Steps:
 
@@ -569,7 +567,7 @@ Steps:
 
 ##### Random Forest Model 1
 
-Create first model with all variables except gender and Dependents.
+Create the first model with all variables except gender and Dependents.
 
 ```{r}
 library(randomForest)
@@ -623,7 +621,7 @@ print(rf_2)
 
 ##### Prediction
 
-We will do the model evaluation, apply RF model 1 and model 2 with test dataset to see the accuracy and other matrices. 
+We will do the model evaluation, apply RF model 1 and model 2 with the test dataset to see the accuracy and other matrices. 
 
 
 ```{r}
@@ -635,7 +633,7 @@ confusionMatrix(rf_predict_2, test_RF$Loan_Status)
 
 ```
 
-We have an accuracy of 80 % for first model and 81.82 %for second model.
+We have an accuracy of 80 % for the first model and 81.82 % for the second model.
 
 Let's have a tabular view of RF model 1 and Model 2 matrix comparison.
 
@@ -652,7 +650,7 @@ tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("stri
 
 # 4. Gradient Boosting
 
-[insert background]
+Gradient Boosting is a machine learning algorithm, used for both classification and regression problems. Gradient boosting works by building simpler (weak) prediction models sequentially where each model tries to predict the error left over by the previous model. A weak model is one  that does slightly better than random predictions. Boosting works on the principle of improving mistakes of the previous learner through the next learner.
 
 In boosting, each new tree is a fit on a modified version of the original data set. Gradient Boosting trains many models in a gradual, additive and sequential manner. 
 
@@ -660,7 +658,7 @@ Our approach:
 
 * **Pre-process data**: normalize independent numeric variables, drop impertinent variables, convert categorical variables to numeric, binary scale, convert dependent variable to factor type
 * **Train-test split**: we partition our data with a 75% train, 25% test split
-* **Matrix conversions**: we convert our dataframes to matrices as required to be read in to XGBoost
+* **Matrix conversions**: we convert our data frames to matrices as required to be read in to XGBoost
 * **Train model**: initialize parameters and play with variable values to observe the effect
 * **Optimize model**: using error values and feature importance rankings, we optimize our model for the highest predictive accuracy
 * **Output statistics**: verify the accuracy of our model using a confusion matrix and then using caret's built-in function.
@@ -692,7 +690,7 @@ Based on the improved skewness values our normalization was a success and these 
 
 ```{r}
 #2. drop impertinent variables, convert to numeric, and change variable values
-loan_GB <- subset(loan, select = -c(Gender, Property_Area, CoapplicantIncome)) #since CoapplicantIncome is incorproated with ApplicantIncome
+loan_GB <- subset(loan, select = -c(Gender, Property_Area, CoapplicantIncome)) #since CoapplicantIncome is incorporated with ApplicantIncome
 
 # Convert Dependents, Credit_History numeric type
 loan_GB$Dependents <- as.numeric(loan_GB$Dependents)
@@ -919,20 +917,27 @@ From the above error plot we can see that as our iterations increase, our traini
 
 # 5. Model Comparison (Decision Trees vs. Random Forests vs. Gradient Boosting)
 
-5. Model performance: please compare the models you settled on for problem # 2 – 4. Comment on their relative performance. Which one would you prefer the most? Why? (20 points)
-
-[insert background]
+We evaluate our models by applying **RF Model 1** and **RF Model 2** to the test data set. We utilize the **confusionMatrix** function from the caret library and present our statistics as a kable table to glean more insight regarding the comparative statistics between each model's performance:
 
 ```{r}
-#Present all model statistics on the same graphic
-tabularview <- data.frame(DT_Model, RF_Model_2, GB_Model_1)
+
+#Tabular view of RF model 1 and Model 2 matrix comparison
+
+rf_predict_1 <- predict(rf_1, newdata = test_RF)
+#confusionMatrix(rf_predict_1, test_RF$Loan_Status)
+RF_Model_1 <- confusionMatrix(rf_predict_1, test_RF$Loan_Status)$byClass
+
+rf_predict_2 <- predict(rf_2, newdata = test_RF)
+#confusionMatrix(rf_predict_2, test_RF$Loan_Status)
+RF_Model_2 <- confusionMatrix(rf_predict_2, test_RF$Loan_Status)$byClass
+
+tabularview <- data.frame(RF_Model_1, RF_Model_2)
 
 tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
-
 ```
+The models share the same Sensitivity, Recall, Prevalence, and Detection Rates, but for every other metric (aside from Detection Prevalence) RF Model 2 outperforms RF Model 1. Based on the output statistics above **RF Model 2 is superior to RF Model 1** and will serve as our chosen Random Forest model.
 
-[comment on the statistics and select a model]
-
+For now, we note the Random Forest model's performance based on these classification metrics. Later, we'll provide an in-depth interpretation of these statistics vs. those of our Decision Tree and Gradient Boosting models.
 ................................................................................
 
 
@@ -948,6 +953,5 @@ https://www.datanovia.com/en/lessons/transform-data-to-normal-distribution-in-r/
 https://appsilon.com/r-xgboost/ (XGBoost)
 http://rstudio-pubs-static.s3.amazonaws.com/368478_bf9700befeba4283a4640a9a1285af22.html (XGBoost)
 https://www.youtube.com/watch?v=woVTNwRrFHE (XGBoost)
+https://www.machinelearningplus.com/machine-learning/gradient-boosting/
 
-
-# Appendix 
