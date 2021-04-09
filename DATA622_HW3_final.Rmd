@@ -848,13 +848,13 @@ tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("stri
 
 ```
 
-Consulting the above output table, we observe that **DT Model** has the strongest performance for `Specificity`, `Pos Pred Value`, `Precision`, and `F1` whereas **GB Model 1** has the strongest performance for `Sensitivity`, `Neg Pred Value` and `Balanced Accuracy`. Thus, **DT Model** performs better when predicting loan approvals while **GB Model 1** performs better when predicting loan rejections.
+Consulting the above output table, we observe that **DT Model** has the strongest performance for `Specificity`, `Pos Pred Value`, `Precision`, and `F1` whereas **GB Model 1** has the strongest performance for `Accuracy`, `Sensitivity`, `Neg Pred Value` and `Balanced Accuracy`. Thus, **DT Model** performs better when predicting loan approvals while **GB Model 1** performs better when predicting loan rejections.
 
 ## Analysis
 
-Decision tree's often raise concerns regarding over-fitting, bias and variance error because of their simplicity, and random forests are meant to address these concerns by accounting for a collection of decision trees to come to a single, aggregated result. We found it surprising that the decision tree model outperformed the random forest model. This may have been because of how we implemented the model or it may have simply been a poor situation for random forests. 
+Decision tree's often raise concerns regarding over-fitting, bias and variance error because of their simplicity, and random forests are meant to address these concerns by accounting for a collection of decision trees to come to a single, aggregated result. We found it surprising that the decision tree model outperformed the random forest model for many metrics (ie. `Balanced Accuracy`). This may have been because of how we implemented the model or it may have simply been a poor situation for random forests. 
 
-Where decision trees are lauded for ease of interpretability and speed and random forests are lauded for how they handle noise, gradient boosting is known to handle unbalanced data the best. **We would recommend gradient boosting** for the simple fact that we're dealing with imbalanced classes (recall 192 N's, 422 Y's) and **GB Model 1** is the best performing model across the board when this is taken into account.
+Where decision trees are lauded for ease of interpret-ability and speed and random forests are lauded for how they handle noise, gradient boosting is known to handle unbalanced data the best. **We would recommend gradient boosting** for the simple fact that we're dealing with imbalanced classes (recall 192 N's, 422 Y's) and **GB Model 1** is the best performing model across the board when this is taken into account.
 
 ................................................................................
 
