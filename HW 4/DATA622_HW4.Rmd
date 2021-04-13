@@ -1,0 +1,126 @@
+---
+title: "DATA622_HW4"
+author: "Group 5"
+date: "`r Sys.Date()`" # Due 5/7/2021
+output: 
+ html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+    highlight: tango
+---
+
+## Authorship
+
+**Group 5:** 
+
+* Don (Geeth) Padmaperuma,
+* Subhalaxmi Rout, 
+* Isabel R., and
+* Magnus Skonberg
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(
+	echo = TRUE,
+	message = FALSE,
+	warning = FALSE
+)
+```
+
+```{r library, include= FALSE}
+library(tidyverse)
+library(caret)
+library(palmerpenguins)
+library(e1071) 
+library(caTools)
+library(ggplot2)
+library(GGally)
+library(ggplot2) 
+library(MASS) 
+library(mvtnorm)
+library(class)
+library(dplyr)
+library(mice)
+library(corrplot)
+library(rpart)
+library(rpart.plot)
+library(party)
+library(randomForest)
+library(gbm)
+library(plyr)
+library(gridExtra)
+library(randomForest)
+library(kableExtra)
+library(gbm)
+library(xgboost)      # a faster implementation of gbm
+library(Matrix)
+```
+
+# Background
+
+The purpose of this assignment was to explore clustering via k-means clustering or hierachical clustering, Principal Component Analysis, and Support Vector Modeling.
+
+
+## Our Approach
+
+
+................................................................................
+
+
+#  Data
+
+[Explanataion of Datset].
+
+We load in the data, pre-process it, verify the observations, and utilize the built-in glimpse() function to gain insight into the dimensions, variable characteristics, and value range:
+
+```{r}
+#Load in data
+adhd <- read.csv(, stringsAsFactors = TRUE)
+
+adhd[adhd==""] <- NA #replace empty strings with NAs
+#head(loan) #verify 1st 6 observations
+```
+```
+
+Once we've dropped NA values and selected pertinent variables, we end up with a x observation x x variable dataframe with:
+
+* 
+
+
+# 1. Clustering
+
+
+```{r}
+# 
+```
+
+
+................................................................................
+
+
+
+
+
+# 2. Principal Component Analysis
+
+Principal Component Analysis (PCA) is a way of reducing the dimensions of a given dataset by extracting new features from the original features present in the dataset. The “new” variables after PCA are all independent of one another.PCA wont reduce the number of features / variables in your data.
+```{r}
+
+```
+
+................................................................................
+
+# 3. Random Forests
+
+
+................................................................................
+
+
+# References
+
+In completing this assignment, reference was made to the following:
+
+* Towards Data Science. (2019). **Principal Component Analysis (PCA) 101, using R** [article]. Retrieved from: https://towardsdatascience.com/principal-component-analysis-pca-101-using-r-361f4c53a9ff
+* Medium. (2019). **Principal Component Analysis(PCA) in Machine Learning Made Easy** [article].
+Retried from: https://shiva1gandluri.medium.com/principal-component-analysis-pca-in-machine-learning-c3f239249b73
