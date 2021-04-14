@@ -55,6 +55,8 @@ library(kableExtra)
 library(gbm)
 library(xgboost)      # a faster implementation of gbm
 library(Matrix)
+library(factoextra)
+library(cluster)
 ```
 
 # Background
@@ -79,10 +81,13 @@ We load in the data, pre-process it, verify the observations, and utilize the bu
 data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/HW%204/ADHD_data.csv", stringsAsFactors = TRUE)
 
 #data <-read.csv("ADHD_data.csv")
-head(data)
-adhd <- data[,c(1,2,3,4,23,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54)]#remove individual ADHD self-report scale and Mood disorder questions.
+data2 <- data[,c(1,2,3,4,23,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54)]#remove individual ADHD self-report scale and Mood disorder questions.
+adhd <-data2 %>% add_column(Has_ADHD = if_else(data$ADHD.Total<=35, "TRUE", "FALSE"))#add column 
+head(adhd)
 adhd[adhd==""] <- NA #replace empty strings with NAs
 ```
+
+
 
 Being that we haven't worked with the ADHD dataset before, our exploratory data analysis (EDA) will be more in-depth. The depth will allow for greater understanding of the data at hand prior to applying clustering, Principal Component Analysis, and Support Vector Modeling.
 
@@ -103,7 +108,7 @@ We're dealing with a 175 observation x 54 variable dataframe with:
 * `Race`,
 * `ADHD Total`,
 * `Mood Disorder Total`,
-* `Individual Substances`(Alcohol, THC, Cocaine, Stimulants, Sedative-hypnotics, Opiods),
+* `Individual Substances`(Alcohol, THC, Cocaine, Stimulants, Sedative-hypnotics, Opiods)<-Do we want to combine this?
 * `Court Order`
 * `Education`
 * `History of Violence`
@@ -124,26 +129,79 @@ We're dealing with a 175 observation x 54 variable dataframe with:
 Of the above variables, we can see that `[Variable]` does not appear to provide much insight. We'll drop this variable, explore a clearer visualization of NA counts and then deal with our NA values: 
 
 
-
 # 1. Clustering
 
+Clustering attempts to find clusters of observations within a dataset and finds structure within a dataset rather than predicting the value of some response variable.
 
 ```{r}
-# 
+fviz_nbclust(adhd, kmeans, method = "wss")
 ```
 
+```{r}
+#calculate gap statistic based on number of clusters
+gap_stat <- clusGap(adhd,
+                    FUN = kmeans,
+                    nstart = 25,
+                    K.max = 10,
+                    B = 50)
+
+#plot number of clusters vs. gap statistic
+fviz_gap_stat(gap_stat)
+```
+
+```{r}
+#make this example reproducible
+set.seed(1)
+
+#perform k-means clustering with k = 4 clusters
+km <- kmeans(adhd, centers = 4, nstart = 25)
+
+#view results
+km
+```
 
 ................................................................................
-
-
-
 
 
 # 2. Principal Component Analysis
 
 Principal Component Analysis (PCA) is a way of reducing the dimensions of a given dataset by extracting new features from the original features present in the dataset. The “new” variables after PCA are all independent of one another.PCA wont reduce the number of features / variables in your data.
 ```{r}
+#calculate principal components
+results <- prcomp(adhd, scale = TRUE)
 
+#reverse the signs
+results$rotation <- -1*results$rotation
+
+#display principal components
+results$
+  
+#reverse the signs of the scores
+results$x <- -1*results$x
+
+```
+
+```{r}
+biplot(results, scale = 0)
+```
+
+```{r}
+#calculate total variance explained by each principal component
+results$sdev^2 / sum(results$sdev^2)
+
+```
+
+```{r}
+#calculate total variance explained by each principal component
+var_explained = results$sdev^2 / sum(results$sdev^2)
+
+#create scree plot
+qplot(c(1:4), var_explained) + 
+  geom_line() + 
+  xlab("Principal Component") + 
+  ylab("Variance Explained") +
+  ggtitle("Scree Plot") +
+  ylim(0, 1)
 ```
 
 ................................................................................
@@ -151,16 +209,68 @@ Principal Component Analysis (PCA) is a way of reducing the dimensions of a give
 # 3. Support Vector Modeling
 
 Support Vector Modeling (SVM) is a supervised machine learning model that uses classification algorithms for two-group classification problems. After giving an SVM model sets of labeled training data for each category, they’re able to categorize new text.SVM can be used for both regression and classification tasks however is widely used in classification objectives.
+
+```{r}
+library(e1071)
+library(caret)
+ 
+# Regression example
+set.seed(123)
+indexes = createDataPartition(adhd$Has_ADHD, p = .9, list = F)
+train = adhd[indexes, ]
+test = adhd[-indexes, ]
+ 
+model_reg = svm(Has_ADHD~., data=train)
+print(model_reg)
+ 
+pred = predict(model_reg, test)
+ 
+x=1:length(test$Has_ADHD)
+plot(x, test$Has_ADHD, pch=18, col="red")
+lines(x, pred, lwd="1", col="blue")
+ 
+# accuracy check 
+mse = MSE(test$medv, pred)
+mae = MAE(test$medv, pred)
+rmse = RMSE(test$medv, pred)
+r2 = R2(test$medv, pred, form = "traditional")
+ 
+cat(" MAE:", mae, "\n", "MSE:", mse, "\n", 
+    "RMSE:", rmse, "\n", "R-squared:", r2)
+ 
+```
+
+
+
+```{r}
+# Encoding the target feature as factor
+adhd$Has_ADHD = factor(adhd$ADHD.Total, levels = c(0, 1))
+```
+
 ```{r}
 # Splitting the dataset into the Training set and Test set
 set.seed(123)
-split = sample.split(ADHD$Purchased, SplitRatio = 0.75)
+split = sample.split(adhd$Has_ADHD, SplitRatio = 0.75)
 
-training_set = subset(dataset, split == TRUE)
-test_set = subset(dataset, split == FALSE)
+training_set = subset(adhd, split == TRUE)
+test_set = subset(adhd, split == FALSE)
 
 ```
 
+
+```{r}
+# Fitting SVM to the Training set
+classifier = svm(formula = ADHD.Total ~ .,
+				data = training_set,
+				type = 'C-classification',
+				kernel = 'linear')
+```
+
+```{r}
+# Predicting the Test set results
+y_pred = predict(classifier, newdata = test_set])
+
+```
 
 ................................................................................
 
@@ -169,10 +279,15 @@ test_set = subset(dataset, split == FALSE)
 
 In completing this assignment, reference was made to the following:
 
+*Statology. (2020). **K-Means Clustering in R: Step-by-Step Example** [article]. Retrieved from:
+https://www.statology.org/k-means-clustering-in-r/
 * Towards Data Science. (2019). **Principal Component Analysis (PCA) 101, using R** [article]. Retrieved from: https://towardsdatascience.com/principal-component-analysis-pca-101-using-r-361f4c53a9ff
-* Medium. (2019). **Principal Component Analysis(PCA) in Machine Learning Made Easy** [article].
+*Medium. (2019). **Principal Component Analysis(PCA) in Machine Learning Made Easy** [article].
 Retried from: https://shiva1gandluri.medium.com/principal-component-analysis-pca-in-machine-learning-c3f239249b73
 * monkeyLearn. (2017). **An Introduction to Support Vector Machines (SVM)**[article]. Retrieved from:
 https://monkeylearn.com/blog/introduction-to-support-vector-machines-svm/
+*Statology. (2020.) **Principal Components Analysis in R: Step-by-Step Example** [article]. Retrieved from:
+https://www.statology.org/principal-components-analysis-in-r/
 * Towards Date Science. (2018). **Support Vector Machine — Introduction to Machine Learning Algorithms** [article]. Retrieved from:
 https://towardsdatascience.com/support-vector-machine-introduction-to-machine-learning-algorithms-934a444fca47
+*
