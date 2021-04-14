@@ -28,7 +28,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-```{r library, include= FALSE}
+```{r library, include= FALSE, comment=FALSE, message=FALSE}
 library(tidyverse)
 library(caret)
 library(palmerpenguins)
@@ -63,29 +63,66 @@ The purpose of this assignment was to explore clustering via k-means clustering 
 
 
 ## Our Approach
-
+[Insert text]
 
 ................................................................................
 
 
 #  Data
 
-[Explanataion of Datset].
+The dataset is an ADHD mental health datset from a real-life research project.
 
 We load in the data, pre-process it, verify the observations, and utilize the built-in glimpse() function to gain insight into the dimensions, variable characteristics, and value range:
 
 ```{r}
 #Load in data
-adhd <- read.csv(, stringsAsFactors = TRUE)
+data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/HW%204/ADHD_data.csv", stringsAsFactors = TRUE)
 
+#data <-read.csv("ADHD_data.csv")
+head(data)
+adhd <- data[,c(1,2,3,4,23,39,40,41,42,43,44,45,46,47,48,49,50,51,52,53,54)]#remove individual ADHD self-report scale and Mood disorder questions.
 adhd[adhd==""] <- NA #replace empty strings with NAs
-#head(loan) #verify 1st 6 observations
-```
 ```
 
-Once we've dropped NA values and selected pertinent variables, we end up with a x observation x x variable dataframe with:
+Being that we haven't worked with the ADHD dataset before, our exploratory data analysis (EDA) will be more in-depth. The depth will allow for greater understanding of the data at hand prior to applying clustering, Principal Component Analysis, and Support Vector Modeling.
 
-* 
+```{r}
+#Light EDA
+glimpse(adhd)
+summary(adhd)
+```
+
+
+We're dealing with a 175 observation x 54 variable dataframe with:
+
+***
+[I listed all the variables below but i'm not sure if I broke it out correctly Quantitative vs. Categorical. I'm also not sure which variables we should keep. I don't think Non-substance and Substance-related have much significance]
+
+
+* `Sex`,
+* `Race`,
+* `ADHD Total`,
+* `Mood Disorder Total`,
+* `Individual Substances`(Alcohol, THC, Cocaine, Stimulants, Sedative-hypnotics, Opiods),
+* `Court Order`
+* `Education`
+* `History of Violence`
+* `Disorderly Conduct`
+* `Suicide Attempt`
+* `Abuse History`
+* `Non-substance-related`
+* `Substance-related`
+* `Psychiatric Medication`
+
+***
+
+* `ADHD Total`, a categorical, character-based variable, as our dependent variable,
+* `Mood Disorder Total`,`Individual Substances`(Alcohol, THC, Cocaine, Stimulants, Sedative-hypnotics, Opiods), `Abuse History`, `Non-substance related`, `Substance-related`,and `Psychiatric Meds`, all quantitative variables of type dbl or int, as independent variables, and
+* `Sex`, `Race`, `Court Order`, `Education`, `History of Violence`, `Disorderly Conduct`, and `Suicide Attempt`,  all categorical, character-based variables, as independent variables.
+
+
+Of the above variables, we can see that `[Variable]` does not appear to provide much insight. We'll drop this variable, explore a clearer visualization of NA counts and then deal with our NA values: 
+
 
 
 # 1. Clustering
@@ -111,7 +148,18 @@ Principal Component Analysis (PCA) is a way of reducing the dimensions of a give
 
 ................................................................................
 
-# 3. Random Forests
+# 3. Support Vector Modeling
+
+Support Vector Modeling (SVM) is a supervised machine learning model that uses classification algorithms for two-group classification problems. After giving an SVM model sets of labeled training data for each category, they’re able to categorize new text.SVM can be used for both regression and classification tasks however is widely used in classification objectives.
+```{r}
+# Splitting the dataset into the Training set and Test set
+set.seed(123)
+split = sample.split(ADHD$Purchased, SplitRatio = 0.75)
+
+training_set = subset(dataset, split == TRUE)
+test_set = subset(dataset, split == FALSE)
+
+```
 
 
 ................................................................................
@@ -124,3 +172,7 @@ In completing this assignment, reference was made to the following:
 * Towards Data Science. (2019). **Principal Component Analysis (PCA) 101, using R** [article]. Retrieved from: https://towardsdatascience.com/principal-component-analysis-pca-101-using-r-361f4c53a9ff
 * Medium. (2019). **Principal Component Analysis(PCA) in Machine Learning Made Easy** [article].
 Retried from: https://shiva1gandluri.medium.com/principal-component-analysis-pca-in-machine-learning-c3f239249b73
+* monkeyLearn. (2017). **An Introduction to Support Vector Machines (SVM)**[article]. Retrieved from:
+https://monkeylearn.com/blog/introduction-to-support-vector-machines-svm/
+* Towards Date Science. (2018). **Support Vector Machine — Introduction to Machine Learning Algorithms** [article]. Retrieved from:
+https://towardsdatascience.com/support-vector-machine-introduction-to-machine-learning-algorithms-934a444fca47
