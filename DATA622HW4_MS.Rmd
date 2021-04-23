@@ -1,8 +1,14 @@
 ---
-title: "DATA 622 HW4"
-author: "Magnus Skonberg"
-date: "4/21/2021"
-output: html_document
+title: "DATA622_HW4"
+author: "Group 5"
+date: "`r Sys.Date()`" # Due 5/7/2021
+output: 
+ html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+    highlight: tango
 ---
 
 ```{r setup, include=FALSE}
@@ -14,6 +20,8 @@ library(tidyr)
 library(ggplot2)
 library(inspectdf)
 library(corrplot)
+library(stats)
+library(kableExtra)
 ```
 
 ## Authorship
@@ -28,22 +36,26 @@ library(corrplot)
 
 # Background
 
-The purpose of this assignment was to explore Clustering, Principal Component Analysis, and Support Vector Modeling.
+The purpose of this assignment was to explore Clustering, Principal Component Analysis, and Support Vector Machines.
 
+*Clustering* is used as a means of grouping a set of observations in a way that those in the same group are more similar to one another than those in other groups. *Principal Component Analysis* is used to a means of variable reduction where it's our aim to preserve as much useful information as possible. In short, we trade a little accuracy for simplicity. *Support Vector Machines*, on another note, are a supervised learning technique used for classification and regression analysis. We're going to apply it as a means of classification based on one of the variables in our set (suicide).
 
 ## Our Approach
 
-[Insert text]
+We'll perform a relatively in-depth exploratory data analysis (EDA) to better familiarize ourselves with the data at hand and then we'll explore each of the aforementioned methods.
+
+Grouping our patients via k-means / hierarchical clustering and profiling these groups based on shared characteristics, focusing upon a subset of our data (ie. ADHD or mood disorder) in applying Principal Component Analysis, and applying a Support Vector Machine model based on whether or not a patient has attempted suicide.
 
 
 ................................................................................
 
-## The Data
+# The Data
 
-The dataset is an ADHD mental health datset from a real-life research project.
+The data at hand is based on a real life research project and deals with a number of measures of mental health and well-being - attention deficit hyperactivity disorder (ADHD), mood / mental disorder (MD), substance abuse, etc. 
 
-We load in the data and utilize built-in head() and dim() functions for an early read on the data at hand.
+Being that our exploration and application of methods can take on many forms and head in a nearly infinite number of directions, the room for creativity is without bounds.
 
+We start by loading in our data and utilizing built-in head() and dim() functions for an early read.
 ```{r}
 #Load in data
 data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/HW%204/ADHD_data.csv")
@@ -52,10 +64,9 @@ data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-G
 #dim(data)
 ```
 
-
 ## Exploratory Data Analysis
 
-From our initial read of our dataset's dimensions and first 6 entries, we see that we're dealing with a 175 observation x 54 variable dataset. Our initial dataset is broad and may be difficult to manage / make sense of. With the motivation of clarification in mind, we thus break our larger dataset into subsets:
+From our initial read of our dataset's dimensions and first 6 entries, we observe that we're dealing with a 175 observation x 54 variable dataset. Our initial dataset is broad and may be difficult to manage / make sense of. With the motivation of clarification in mind, we thus break our larger dataset into subsets:
 
 1. **genl**: all identifier variables (race, sex, education), total score variables, and history-related variables.
 2. **adhd**: all adhd related question and total score variables.
@@ -169,7 +180,7 @@ fig1
 
 ```
 
-From the table above we see that ~92% of respondent's cases were not court ordered, ~74% of respondents do not have a history of violence, ~70% of respondents have a history of disorderly conduct, ~68% of respondents have not attempted suicide, ~65% of respondents do not have a non-substance diagnosis, ~63% of respondents do not have a history of abuse, ~56% of respondents are African American, ~54% of respondents are male, ~39% of respondents have completed *at least* high school, and ~39% of respondents have one substance related diagnosis. *The fact that `Education` and `Subst.Dx` have the same pcnt values is interesting and worth noting.*
+From the categorical variable table above we see that ~92% of respondent's cases were not court ordered, ~74% of respondents do not have a history of violence, ~70% of respondents have a history of disorderly conduct, ~68% of respondents have not attempted suicide, ~65% of respondents do not have a non-substance diagnosis, ~63% of respondents do not have a history of abuse, ~56% of respondents are African American, ~54% of respondents are male, ~39% of respondents have completed *at least* high school, and ~39% of respondents have one substance related diagnosis. *The fact that `Education` and `Subst.Dx` have the same pcnt values is interesting and worth noting.*
 
 Moving on to our numeric distributions:
 ```{r}
@@ -209,11 +220,78 @@ The pair plot and correlation matrix highlight the fact that `ADHD.Total` and `M
 
 # 1. Clustering
 
-Transition write up
+We elected to utilize **hierarchical clustering** being that it's more adaptive than k-means clustering. For k-means clustering, we have to pre-define our k. Whereas for hierarchical clustering both the value of k and the location of our centroids (mid-point between all data points in the group) is determined as a part of the process.
+
+We proceed by computing the distances between all data points (using Euclidean distance), clustering based on `distances` based on centroid distance *and* the variance in each cluster, and then plotting the corresponding dendrogram:
 
 ```{r}
+set.seed(123)
+
+#compute distances between all data points (using euclidean distance)
+distances <- dist(genl, method = 'euclidean')
+
+#cluster based on distances using centroid distance as well as variance in clusters
+clusterHealth <- hclust(distances, method = 'ward.D') #ward.D accounts for centroid distance + variance
+
+#plot the dendrogram
+plot(clusterHealth)
+```
+
+Based on our dendrogram, it appears that the ideal number of clusters is either 3, 4, or 5. **We proceed with 5 clusters** being that it's the higher of the three and we'd like to better represent the variation we observed during our exploratory data analysis. We want to better capture the distinct characteristics of our clustered groups.
+
+We "cut the tree" and demarcate our groups based on the desired number of clusters, calculate each numeric variables' mean value for each cluster, and then output the resulting table:
+```{r}
+clusterGroups <- cutree(clusterHealth, 5)
+#clusterGroups #verify the breakdown per observation
+
+#Mean value for numeric variables
+#tapply(genl$Age, clusterGroups, mean, simplify=TRUE) #avg age for each cluster
+#tapply(genl$ADHD.Total, clusterGroups, mean) #avg ADHD score for each cluster
+#tapply(genl$MD.TOTAL, clusterGroups, mean) #avg MD score for each cluster
+#tapply(genl$SUB.Total, clusterGroups, mean) #avg SUB score for each cluster
+
+#Extract corresponding values (to place in easy to understand form):
+avg_age <- c(27.06, 48.95, 41.42, 47.4, 25.22)
+avg_adhd <- c(49.34, 53.52, 34.12, 15.93, 6.56)
+avg_md <- c(12.84, 12.71, 10.58, 7.27, 4.11)
+avg_sub <- c(4.13, 3.28, 4.1, 4.17, 3.44)
+
+#Build kable table
+group_names <- c("Group 1", "Group 2", "Group 3", "Group 4", "Group 5")
+df <- data.frame(group_names, avg_age, avg_adhd, avg_md, avg_sub)
+df %>% 
+    kbl() %>%
+    kable_styling(latex_options = "striped")
 
 ```
 
+Based on the output above we'd profile our groups as follows:
+
+* Group 1: **Young and Distressed**. This is the 2nd youngest group (late 20s) with the 2nd highest incidence of ADHD and the highest incidence of mental disorder.
+* Group 2: **Old and Unfocused**. This is the oldest group (late 40s) with the highest incidence of ADHD and the 2nd highest incidence of mental disorder.
+* Group 3: **Mid Age and Mid Tiered**. This group is "middle of the run". They're toward their middle years (early 40s), and have moderate incidence of ADHD and mental disorder.
+* Group 4: **Old and Stable**. This is the 2nd most stable group. They're in their  late 40s and have low incidence of ADHD and mental disorder.
+* Group 5: **Young and Driven**. To contrast the **Young and Distressed** group, this group is young and stable. This is the most stable group. They're in their mid 20s and have the lowest incidence of ADHD and mental disorder.
+
+It was interesting to profile our groups and observe that there appeared to be 2 tiers in the earlier and later years. It was also interesting to see that all groups had a relatively low incidence of substance use / dependency. Due to its apparent low impact as a differentiating factor for our clusters it was not discussed.
 
 
+................................................................................
+
+# 2. Principal Component Analysis
+
+LEFT OFF HERE - look thru resources Isabel linked to, research/ test her approach for efficacy, document assumptions / decisions, etc.
+
+```{r}
+
+#placeholder code block
+
+```
+
+................................................................................
+
+# References
+
+In completing this assignment, reference was made to the following:
+
+* MIT OpenCourseWare. (2018). **An Introduction to Clustering - Video 7: Hierarchical Clustering in R** [video]. Retrieved from: https://www.youtube.com/watch?v=GPOUGpF-Sno [hierarchical clustering]
