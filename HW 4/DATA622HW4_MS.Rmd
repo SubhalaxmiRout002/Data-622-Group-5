@@ -13,7 +13,6 @@ output:
 
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
-
 #libraries
 library(dplyr)
 library(tidyr)
@@ -60,8 +59,8 @@ Being that our exploration and application of methods can take on many forms and
 We start by loading in our data and utilizing built-in head() and dim() functions for an early read.
 ```{r}
 #Load in data
-data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/HW%204/ADHD_data.csv")
-
+#data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/HW%204/ADHD_data.csv")
+data <- read.csv("ADHD_data.csv")
 #head(data)
 #dim(data)
 ```
@@ -81,24 +80,19 @@ We may end up merging these subsets, pulling individual variables, or exploring 
 Once these dataframes are created, we see that **adhd** and **md** have total score variables whereas **sub** does not, even though its data (across variables) maintains a consistent scoring system. Thus, we take it upon ourselves to add this variable for sake of consistency:
 
 ```{r}
-
 genl <- data[c(1:4,23,39)]
 #head(genl) #drop initial, add sub and hstry (all vars or "total score")
-
 #we may want to use these separately (ie. for Q2)
 adhd <- data[c(5:23)]
 md <- data[c(24:39)]
 sub <- data[c(40:45)]
 hstry <- data[c(46:54)]
-
 sub$SUB.Total <- rowSums(sub) #add Total column to sub
-
 #Finalize genl dataframe (for EDA)
 genl$SUB.Total <- sub$SUB.Total #add SUB.Total to genl
 genl <- genl[c(-1)] #drop Initial
 genl <- cbind(genl, hstry) #add history variables back in with general
 head(genl)
-
 ```
 
 We subset our dataframes (as noted above), add a "total" column for **sub**, and finalize our **genl** dataframe by merging the total column for **sub**, dropping the `Initial` variable, and adding all **hstry** variables back in.
@@ -145,11 +139,9 @@ Based on this information, we drop `Psych.meds`, drop remaining NA values, and o
 ```{r}
 genl <- genl[c(-15)] #drop Psych.meds
 genl <- genl %>% tibble() %>% drop_na() #drop NA values
-
 #revisit genl
 dim(genl) #175 - 142 = 33 dropped rows
 colSums(is.na(genl)) #verify no NAs
-
 ```
 
 Our dataset has been reduced from 175 observations x 15 variables to 142 observations x 14 variables and from numerous NA values across multiple variables to no NA values.
@@ -168,19 +160,15 @@ genl$Suicide <- as.factor(genl$Suicide)
 genl$Abuse <- as.factor(genl$Abuse)
 genl$Non.subst.Dx <- as.factor(genl$Non.subst.Dx)
 genl$Subst.Dx <- as.factor(genl$Subst.Dx)
-
 #conver features to numeric
 genl$Age <- as.numeric(genl$Age)
 genl$ADHD.Total <- as.numeric(genl$ADHD.Total)
 genl$MD.TOTAL <- as.numeric(genl$MD.TOTAL)
 genl$SUB.Total <- as.numeric(genl$SUB.Total)
-
 #head(genl) #verify conversions
-
 #visualize categorical distributions as a table
 fig1 <- inspectdf::inspect_imb(genl)
 fig1
-
 ```
 
 From the categorical variable table above we see that ~92% of respondent's cases were not court ordered, ~74% of respondents do not have a history of violence, ~70% of respondents have a history of disorderly conduct, ~68% of respondents have not attempted suicide, ~65% of respondents do not have a non-substance diagnosis, ~63% of respondents do not have a history of abuse, ~56% of respondents are African American, ~54% of respondents are male, ~39% of respondents have completed *at least* high school, and ~39% of respondents have one substance related diagnosis. *The fact that `Education` and `Subst.Dx` have the same pcnt values is interesting and worth noting.*
@@ -192,7 +180,6 @@ Moving on to our numeric distributions:
 fig2 <- inspectdf::inspect_num(genl) %>% 
     show_plot()
 fig2
-
 ```
 
 From the histograms above we see that:
@@ -207,14 +194,11 @@ With insight gained via variable distributions, we move on to observing the pair
 ```{r}
 #paired plot of numeric variables
 pairs(genl %>% select_if(is.numeric))
-
 #Correlation matrix for numeric variables
 genl_corr <- genl %>%
     select_if(is.numeric) %>%
     cor()
-
 corrplot(genl_corr, title="Numeric Variable Correlation",type = "lower", mar=c(0,0,1,0))
-
 ```
 
 The pair plot and correlation matrix highlight the fact that `ADHD.Total` and `MD.TOTAL` appear to have strong correlation. We'll note this fact, while carrying both variables forward.
@@ -230,13 +214,10 @@ We proceed by computing the distances between all data points (using Euclidean d
 
 ```{r}
 set.seed(123)
-
 #compute distances between all data points (using euclidean distance)
 distances <- dist(genl, method = 'euclidean')
-
 #cluster based on distances using centroid distance as well as variance in clusters
 clusterHealth <- hclust(distances, method = 'ward.D') #ward.D accounts for centroid distance + variance
-
 #plot the dendrogram
 plot(clusterHealth)
 ```
@@ -248,26 +229,22 @@ We "cut the tree" and demarcate our groups based on the desired number of cluste
 ```{r}
 clusterGroups <- cutree(clusterHealth, 5)
 #clusterGroups #verify the breakdown per observation
-
 #Mean value for numeric variables
 #tapply(genl$Age, clusterGroups, mean, simplify=TRUE) #avg age for each cluster
 #tapply(genl$ADHD.Total, clusterGroups, mean) #avg ADHD score for each cluster
 #tapply(genl$MD.TOTAL, clusterGroups, mean) #avg MD score for each cluster
 #tapply(genl$SUB.Total, clusterGroups, mean) #avg SUB score for each cluster
-
 #Extract corresponding values (to place in easy to understand form):
 avg_age <- c(27.06, 48.95, 41.42, 47.4, 25.22)
 avg_adhd <- c(49.34, 53.52, 34.12, 15.93, 6.56)
 avg_md <- c(12.84, 12.71, 10.58, 7.27, 4.11)
 avg_sub <- c(4.13, 3.28, 4.1, 4.17, 3.44)
-
 #Build kable table
 group_names <- c("Group 1", "Group 2", "Group 3", "Group 4", "Group 5")
 df <- data.frame(group_names, avg_age, avg_adhd, avg_md, avg_sub)
 df %>% 
     kbl() %>%
     kable_styling(latex_options = "striped")
-
 ```
 
 Based on the output above we'd profile our groups as follows:
@@ -324,7 +301,6 @@ Plot the scree plot to disply the same, scree plot y-axis is variance nothing bu
 ```{r}
 # scree plot
 plot(pca_adhd, type = 'l')
-
 ```
 
 From scree plot PC1, PC2, and PC3 are enough to describe the data.
@@ -336,9 +312,7 @@ Create another dataset use `cbind` with original ADHD data along with PC1, PC2, 
 ```{r}
 # combine dataset
 ADHD_df_2 <- cbind(ADHD_df, pca_adhd$x)
-
 # %>% column_spec(which(ADHD_df_2[,19] > 0.69) , color = 'white', background = 'maroon')
-
 # cor plot
 cor(ADHD_df, ADHD_df_2[, 19:21]) %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down") 
 ```
@@ -433,12 +407,9 @@ Create another dataset use `cbind` with original ADHD data along with PC1, PC2, 
 ```{r}
 # combine dataset
 md_df_2 <- cbind(MD_df, pca_md$x)
-
 # %>% column_spec(which(ADHD_df_2[,19] > 0.69) , color = 'white', background = 'maroon')
-
 # cor plot
 cor(MD_df, md_df_2[, 16:19]) %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down") 
-
 ```
 
 Above cor table we can see 
@@ -583,21 +554,45 @@ fviz_pca_biplot(result.pca, repel = TRUE,
 Support Vector Modeling (SVM) is a supervised machine learning model that uses classification algorithms for two-group classification problems. After giving an SVM model sets of labeled training data for each category, they’re able to categorize new text.SVM can be used for both regression and classification tasks however is widely used in classification objectives.
 
 ```{r}
-adhd <-genl %>% tibble::add_column(Has_ADHD = if_else(genl$ADHD.Total<=35, "TRUE", "FALSE"))#add column 
-head(adhd)
-adhd[adhd==""] <- NA
-
+#adhd <-md_df %>% tibble::add_column(Has_ADHD = if_else(genl$ADHD.Total<=35, "TRUE", "FALSE"))#add column 
+head(MD_df)
+#adhd[adhd==""] <- NA
 # Regression example
 set.seed(123)
-indexes = caret::createDataPartition(adhd$Has_ADHD, p = .9, list = F)
-train = adhd[indexes, ]
-test = adhd[-indexes, ]
+indexes = caret::createDataPartition(MD_df$MD.Q1a, p = .9, list = F)
+train = MD_df[indexes, ]
+test = MD_df[-indexes, ]
+```
+
+```{r warning=FALSE, message=FALSE, comment=FALSE}
+# Fitting SVM to the Training set
+library(e1071)
+
+classifier = svm(formula = MD.Q1a ~ .,
+				data = train,
+				type = 'C-classification',
+				kernel = 'linear')
 
 ```
 
 
+```{r}
+# Predicting the Test set results
+y_pred = predict(classifier, newdata = test)
+y_pred
+```
 
+```{r}
+# Making the Confusion Matrix
+cm = table(test, y_pred)
 
+```
+```{r}
+# installing library ElemStatLearn
+library(ElemStatLearn)
+  
+# Plotting the training data set results
+```
 
 
 
