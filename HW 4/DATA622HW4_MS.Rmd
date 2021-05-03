@@ -124,7 +124,6 @@ summary(genl)
 glimpse(genl)
 ```
 
-
 From the above outputs we can extend that:
 
 * the average `Age` of respondents is ~40, there are slightly more male than female respondents, and the average education level ~12 (finishing high school).
@@ -160,12 +159,14 @@ genl$Suicide <- as.factor(genl$Suicide)
 genl$Abuse <- as.factor(genl$Abuse)
 genl$Non.subst.Dx <- as.factor(genl$Non.subst.Dx)
 genl$Subst.Dx <- as.factor(genl$Subst.Dx)
-#conver features to numeric
+
+#convert features to numeric
 genl$Age <- as.numeric(genl$Age)
 genl$ADHD.Total <- as.numeric(genl$ADHD.Total)
 genl$MD.TOTAL <- as.numeric(genl$MD.TOTAL)
 genl$SUB.Total <- as.numeric(genl$SUB.Total)
 #head(genl) #verify conversions
+
 #visualize categorical distributions as a table
 fig1 <- inspectdf::inspect_imb(genl)
 fig1
@@ -185,7 +186,7 @@ fig2
 From the histograms above we see that:
 
 * `ADHD.Total` has a left skewed normal distribution with a peak ~45.
-* `Age` appears to be bimodal with peaks ~25 and ~50.
+* `Age` appears to be multimodal with peaks ~25, ~35 and ~50.
 * `MD.TOTAL` has a non-normal distribution with a peak concentrated > 15 (at the far right).
 * `SUB.Total` appears to have a multi-modal distribution with its largest peak at ~3.
 
@@ -262,111 +263,216 @@ It was interesting to profile our groups and observe that there appeared to be 2
 
 # 2. Principal Component Analysis
 
-Principal Component Analysis (PCA) is a way of reducing the dimensions of a given dataset by extracting new features from the original features present in the dataset. The “new” variables after PCA are all independent of one another.PCA wont reduce the number of features / variables in your data.
+Principal Component Analysis (PCA) is a way of reducing the dimensions of a given dataset by extracting new features from the original features present in the dataset. The “new” variables after PCA are all independent of one another. We elected to perform Principal Component Analysis on the ADHD self-report columns, MD (mood disorder) questionnaire, and entire dataset.
 
-We decide to perform PCA on HDAD columns, MD columns and with enire dataset. 
+## ADHD
 
-### PCA on Attention-Deficit/Hyperactivity Disorder (ADHD)
+We start with the Attention Deficit Hyperactivity Disorder (ADHD) symptom variables. During EDA, we'd subset datasets based on question type and thus we proceed with the `adhd` dataset.
 
-We start with the symptoms of attention-deficit/hyperactivity disorder (ADHD)  columns. In our dataset 
-total 18 columns availables for ADHD. All these columns have same scale and numeric datatype. 
+There are 19 variables in the `adhd` dataset, 18 pertaining to self-reported ADHD question responses and 1 the total score for that row. All ADHD questions capture categorical responses: never-0, rarely-1, sometimes-2, often-3, and very often-4 whereas the `ADHD.Total` is a quantitative (sum) variable representative of the individual's total self-report score for ADHD scale.
 
-All ADHD questions of 5 categiries i.e never-0, rarely-1, sometimes-2, often-3, and very often-4. Creat a new datset i.e `HDFC_df` here we consider only ADHD questionaries because for PCA we need only numeric data and will check of NAs. Here we are not including `ADHD.Total` because total column is the sum of all 18 ADHD question columns. 
+We verify that our data does not have missing values:
 
 ```{r}
-# select dataset
-ADHD_df <- data %>% select(5:22)
-# check for NAs
-colSums(is.na(ADHD_df))
+# Check for NAs
+colSums(is.na(adhd))
+
 ```
 
+Missing values would disturb the implementation of PCA (where we'd have to drop / impute corresponding values), and we confirm that our data has 0 missing values across all variables.
 
-
-Above summary we see no NAs available in the `ADHC_df` dataset.
-
+We then perform PCA via **pcrcomp()** function and review corresponding statistics: 
 
 ```{r}
-# Compute principal component analysis.
-pca_adhd <- prcomp(ADHD_df)
+# Perform PCA and review summary statistics
+pca_adhd <- prcomp(adhd)
 summary(pca_adhd)
+
 ```
 
-Above summary we Standard deviation(SD) is the SD of data along single principal component. It measures the variability accross the priniciple component. 
+From the `Importance of components`, we can interpret:
 
-Proportion of Variance : It explains the variability in the data, example 51% of the variance in the data is explained by PC1, 7% of the variance in the data is explained by PC2 so on.
+* `Standard deviation` as a measure of variability across a single component (ie. deviation of data within `PC1`)
+* `Proportion of Variance` as a measure of the component's variability / representative capability for the entire dataset (ie. the sum of the `Proportion of Variance` row = 1.00).
+* `Cumulative Proportion` as a measure of the cumulative variability represented by principal components up until the component column we're on.
 
-Cumulative Proportion: This is similar to Proportion of variance, PC1 explains 51% of the variance in the data, together PC1 and PC2 explains 59% of the variance  in the data, PC1, PC2, and PC3 explains 69% of the variance  in the data so on.
+From these definitions we can extend that the first 3 components (`PC1`, `PC2`, and `PC3`) represent ~ 96.5% of the data and remaining components add but minor increments to this representative capability.
 
-Plot the scree plot to disply the same, scree plot y-axis is variance nothing but the square of the SD. 
+Next, we visit the scree plot:
+
 ```{r}
 # scree plot
 plot(pca_adhd, type = 'l')
 ```
 
-From scree plot PC1, PC2, and PC3 are enough to describe the data.
+If we recall from statistics: $var = sd^2$, where $var$ represents variance and $sd$ represents standard deviation.
 
-#### Correlation between variables and principal componenets:
+From the scree plot above, we confirm our earlier finding that **PC1, PC2, and PC3 appear to be enough to represent our larger dataset.**
 
-Create another dataset use `cbind` with original ADHD data along with PC1, PC2, and PC3.
+### Correlation between variables and principal components:
+
+To explore how our variables (original and PCA) relate to one another, we bind `PC1`, `PC2`, and `PC3` to our original `adhd` dataset, calculate variable correlation and output the result as a table:
 
 ```{r}
-# combine dataset
-ADHD_df_2 <- cbind(ADHD_df, pca_adhd$x)
+# combine datasets
+adhd_df2 <- cbind(adhd, pca_adhd$x)
 # %>% column_spec(which(ADHD_df_2[,19] > 0.69) , color = 'white', background = 'maroon')
+
 # cor plot
-cor(ADHD_df, ADHD_df_2[, 19:21]) %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down") 
+cor(adhd, adhd_df2[, 20:22]) %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down") 
+
 ```
 
-Above cor table we can see 
+From the correlation table we can extend that:
 
-* ADHD.Q8, ADHD.Q9, ADHD.Q10, ADHD.Q13,  and ADHD.Q18 have positive high correlation with PC1. 
-* ADHD.Q15, ADHD.Q16, ADHD.Q17, and ADHD.Q18  have positive correlation with PC2 and negative correlation with ADHD.Q2, ADHD.Q3, and ADHD.Q4. 
-* ADHD.Q5, ADHD.Q6, ADHD.Q13,  and ADHD.Q14 have negative correlation with PC3.
+* All variables have a strong positive correlation with `PC1` *and* it appears that `PC1` is identical to `ADHD.Total` based on their correlation of ~1.00.
+* Q1: Q5, Q7, Q8, and Q11 have a negative correlation, Q9, Q10, Q13, and Q14 have a *slight* negative correlation, Q12, Q15:Q18 have a positive correlation, and Q6 and `ADHD.Total` have a *slight* positive correlation with `PC2`.
+* Q1:Q4, Q8:Q10, Q12 and Q16 have a positive correlation, Q7, Q17, and Q18 have a *slight* positive correlation, Q5, Q6, Q13 and Q14 have a negative correlation, and Q11, Q15, and `ADHD.Total` have a *slight* negative correlation with with `PC3`.
 
-##### Bi-plot and  principal components
+The correlations above provide indication as to the makeup of our principal components. Those with a stronger positive correlation are more a component while those with a stronger negative correlation are less a component.
 
-In Bi-plot red arrows represent the eigenvectors of each variable. This plot helps us to interpret the relationship between principal components.
+From our correlation table, we move on to the corresponding biplot.
+
+### Bi-plots
+
+When our first two PCs explain a significant portion of the variance in our data (which is the case for our application), we can make use of a bi-plot. 
+
+A bi-plot overlays the scores plot, a projection of observations onto the span of the first two PCs, and a loadings plot, a projection of the variable vectors onto the span of the PCs, in a single graphic:
 
 ```{r, fig.height=10, fig.width=10}
 # Bi-plot of PC1 and PC2
 biplot(pca_adhd, choices = c(1,2), scale = 0)
 ```
 
-From (PC1 and PC2 biplot) observations have high HDAD.Q15, HDAD.Q16, HDAD.Q17, HDAD.Q4, and HDAD.Q5. 
+Points are projected observations while vectors are projected variables. In the above plot, the red arrows represent the eigenvectors of each variable helping us to interpret the relationship between principal components while the numbers in black represent our observations. 
+
+With regard to reading the plot, the left and bottom axes are used to read PCA scores (of the dots) while the top and right axes are used to read how strongly each vector influences the PC.
+
+From the above biplot, we can extend that:
+* the observations appear to play a larger role in the makeup of `PC1` than that of `PC2`,
+* `ADHD.Tot` has a lot of weight for `PC1` and 
+* Q15:Q18 carry a lot of positive weight while Q2:Q4 carry negative weight for `PC2` 
+
+Next, we move on to the bi-plot for PC2 and PC3:
 
 ```{r, fig.height=10, fig.width=10}
 # Bi-plot of PC2 and PC3
 biplot(pca_adhd, choices = c(2,3), scale = 0)
 ```
 
-(PC2 and PC3 biplot) observations have low HDAD.Q1, HDAD.Q4, HDAD.Q5,  and high HDAD.Q16. 
+From the `PC2`-`PC3` biplot we can extend that:
+
+* the observations follow a relatively consistent spread with some observations playing a larger role in `PC2` vs. `PC3` (ie. 60) while others play a larger role in `PC3` vs. `PC2` (ie. 39),
+* Q1 and Q15 carry a lot of positive weight for `PC2` and 
+* Q5 carries a lot of negative weight while Q1 carries a lot of positive weight for `PC3`
+
+Finally, we explore the bi-plot for PC1 and PC3:
 
 ```{r, fig.height=10, fig.width=10}
 # Bi-plot of PC1 and PC3
 biplot(pca_adhd, choices = c(1,3), scale = 0)
 ```
 
-From (PC1 and PC3 biplot) observations have high HDAD.Q1, HDAD.Q5, HDAD.Q6, HDAD.Q13, and HDAD.Q14. 
+The `PC1`-`PC3` bi-plot has a similar layout to our first:
 
-We need better approach to examine the relationship. 
+* the observations appear to play a larger role in the makeup of `PC1` than that of `PC2`,
+* `ADHD.Tot` has a lot of weight for `PC1` and 
+* Q1, Q2, Q4 carry a lot of positive weight while Q5, Q13, Q14 carry a lot of negative weight for `PC2`.
 
-##### Using VARIMAX
+These plots are useful, but as a possible improvement we'll explore varimax. 
 
-What is varimax rotation in PCA?
+### Varimax rotation
 
-Change of coordinates used in principal component analysis (PCA) is known as Varimax rotation. It maximizes the sum of the variances of the squared loadings as all the coefficients will be either large or near zero, with few intermediate values.
+Varimax rotation is used to simplify the expression of a particular sub-space. Coordinates remain unchanged while the sum of squared loadings are maximized.
+
+We apply the **varimax()** function to the rotation variable of our principal components and plot the correlation of corresponding loadings: 
 
 ```{r}
 # apply varimax 
 var_adhd <- varimax(pca_adhd$rotation)
-var_adhd$loadings
+
+#var_adhd$loadings #corrplot is more succinct, easier to interpret
+
 corrplot(var_adhd$loadings[,1:3], is.corr = FALSE)
 ```
 
-Varimax loading interprets : PC1 positively co-relate with ADHD.Q2 , PC2 positively co-relate with ADHD.Q16 and PC3 negative co-relate with ADHD.Q5. 
+We elect to interpret the correlation plot (over the loadings output) due to its clarity and succinctness. From the above output, we can see that:
+
+* `PC1` is strongly (negatively) correlated with `ADHD.Total`,
+* `PC2` is strongly (negatively) correlated with `ADHD.Q16`, and 
+* `PC3` is strongly (positively) correlated with `ADHD.Q5`
+
+Varimax provided in 2 lines of code what it took multiple plots, iterations, and interpretations to come to when referring to biplots: the strongest correlate for each principal component.
+
+## PCA: MD and general
+
+In the Appendix, we've also provided code (with a more succinct write up) for our application of principal component analysis to the `md` (mood disorder) and `genl` (general) datasets.
+
+................................................................................
 
 
-### PCA on mood disorders (MD)
+# 3. Support Vector Modeling
+
+Support Vector Modeling (SVM) is a supervised machine learning model that uses classification algorithms for two-group classification problems. After giving an SVM model sets of labeled training data for each category, they’re able to categorize new text.SVM can be used for both regression and classification tasks however is widely used in classification objectives.
+
+```{r}
+# #adhd <-md_df %>% tibble::add_column(Has_ADHD = if_else(genl$ADHD.Total<=35, "TRUE", "FALSE"))#add column 
+# head(MD_df)
+# #adhd[adhd==""] <- NA
+# # Regression example
+# set.seed(123)
+# indexes = caret::createDataPartition(MD_df$MD.Q1a, p = .9, list = F)
+# train = MD_df[indexes, ]
+# test = MD_df[-indexes, ]
+```
+
+```{r warning=FALSE, message=FALSE, comment=FALSE}
+# Fitting SVM to the Training set
+# library(e1071)
+# 
+# classifier = svm(formula = MD.Q1a ~ .,
+# 				data = train,
+# 				type = 'C-classification',
+# 				kernel = 'linear')
+
+```
+
+
+```{r}
+# Predicting the Test set results
+# y_pred = predict(classifier, newdata = test)
+# y_pred
+```
+
+```{r}
+# Making the Confusion Matrix
+# cm = table(test, y_pred)
+# 
+# ```
+# ```{r}
+# # installing library ElemStatLearn
+# library(ElemStatLearn)
+#   
+# # Plotting the training data set results
+```
+
+
+
+................................................................................
+
+# References
+
+In completing this assignment, reference was made to the following:
+
+* MIT OpenCourseWare. (2018). **An Introduction to Clustering - Video 7: Hierarchical Clustering in R** [video]. Retrieved from: https://www.youtube.com/watch?v=GPOUGpF-Sno [hierarchical clustering]
+* Bio Turing. (2018). **How to read PCA biplots and scree plots** [article]. Retrieved from: https://blog.bioturing.com/2018/06/18/how-to-read-pca-biplots-and-scree-plots/
+
+................................................................................
+
+
+# Appendix
+
+## Mood Disorder PCA
 
 There are columns 15 columns for MD. we will follow the same process that we used for ADHD. 
 
@@ -395,12 +501,11 @@ Plot the scree plot to disply the same, scree plot y-axis is variance nothing bu
 plot(pca_md, type = 'l')
 ```
 
-
 From scree plot PC1, PC2, PC3, and PC4 are enough to describe the data. 
 
 From 'https://www.originlab.com/doc/Origin-Help/PrincipleComp-Analysis', found if the relationship is weak between variables, PCA does not work well to reduce data. For MD data more than 3 PC components describe the data, not sure how well PCA will work. 
 
-#### Correlation between variables and principal componenets:
+### Correlation between variables and principal componenets:
 
 Create another dataset use `cbind` with original ADHD data along with PC1, PC2, and PC3.
 
@@ -418,7 +523,6 @@ Above cor table we can see
 * MD.Q1g, and MD.Q1c  have positive correlation with PC2 and negative correlation with MD.Q3. 
 * MD.Q1k has positive correlation with PC3 and MD.Q1c has negative correlation with PC3.
 * MD.Q1m and MD.Q1L have negative correlation with PC4.
-
 
 ##### Bi-plot and  principal components
 
@@ -465,7 +569,7 @@ corrplot(var_md$loadings[,1:4], is.corr = FALSE)
 
 Varimax loading interprets : PC1 negatively co-relate with MD.Q1g , PC2 positively co-relate with MD.Q1i and PC3 positively co-relate with MD.Q1k and PC4 negatively co-relate with MD.Q1m.
 
-### PCA using entire dataset
+## General PCA
 
 PCA performs using entire dataset, exclude indivislau ADHD and MD column and take Total.ADHD and MD in to consideration.
 
@@ -548,58 +652,3 @@ fviz_pca_biplot(result.pca, repel = TRUE,
 # res.ind$contrib        # Contributions to the PCs
 # res.ind$cos2           # Quality of representation 
 ```
-
-# 3. Support Vector Modeling
-
-Support Vector Modeling (SVM) is a supervised machine learning model that uses classification algorithms for two-group classification problems. After giving an SVM model sets of labeled training data for each category, they’re able to categorize new text.SVM can be used for both regression and classification tasks however is widely used in classification objectives.
-
-```{r}
-#adhd <-md_df %>% tibble::add_column(Has_ADHD = if_else(genl$ADHD.Total<=35, "TRUE", "FALSE"))#add column 
-head(MD_df)
-#adhd[adhd==""] <- NA
-# Regression example
-set.seed(123)
-indexes = caret::createDataPartition(MD_df$MD.Q1a, p = .9, list = F)
-train = MD_df[indexes, ]
-test = MD_df[-indexes, ]
-```
-
-```{r warning=FALSE, message=FALSE, comment=FALSE}
-# Fitting SVM to the Training set
-library(e1071)
-
-classifier = svm(formula = MD.Q1a ~ .,
-				data = train,
-				type = 'C-classification',
-				kernel = 'linear')
-
-```
-
-
-```{r}
-# Predicting the Test set results
-y_pred = predict(classifier, newdata = test)
-y_pred
-```
-
-```{r}
-# Making the Confusion Matrix
-cm = table(test, y_pred)
-
-```
-```{r}
-# installing library ElemStatLearn
-library(ElemStatLearn)
-  
-# Plotting the training data set results
-```
-
-
-
-................................................................................
-
-# References
-
-In completing this assignment, reference was made to the following:
-
-* MIT OpenCourseWare. (2018). **An Introduction to Clustering - Video 7: Hierarchical Clustering in R** [video]. Retrieved from: https://www.youtube.com/watch?v=GPOUGpF-Sno [hierarchical clustering]
