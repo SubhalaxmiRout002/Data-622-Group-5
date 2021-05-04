@@ -30,6 +30,7 @@ library(Boruta)         # feature selection
 library(caret)
 library(rsample)        # train-test split
 library(lattice)
+library(NbClust)
 
 #User-defined function
 plot_corr_matrix <- function(dataframe, significance_threshold){
@@ -103,6 +104,7 @@ The data at hand is based on a real life research project and deals with a numbe
 Being that our exploration and application of methods can take on many forms and head in a nearly infinite number of directions, the room for creativity is without bounds.
 
 We start by loading in our data and utilizing built-in head() and dim() functions for an early read.
+
 ```{r}
 #Load in data
 #data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/HW%204/ADHD_data.csv")
@@ -309,6 +311,9 @@ Based on the output above we'd profile our groups as follows:
 
 It was interesting to profile our groups and observe that there appeared to be 2 tiers in the earlier and later years. It was also interesting to see that all groups had a relatively low incidence of substance use / dependency. Due to its apparent low impact as a differentiating factor for our clusters it was not discussed.
 
+## Clustering: K-means
+
+In the Appendix, we've also provided code (with a more succinct write up) for our application of K-means clustering analysis to the  `genl` (general) dataset.
 
 ................................................................................
 
@@ -656,7 +661,7 @@ In completing this assignment, reference was made to the following:
 * MIT OpenCourseWare. (2018). **An Introduction to Clustering - Video 7: Hierarchical Clustering in R** [video]. Retrieved from: https://www.youtube.com/watch?v=GPOUGpF-Sno [hierarchical clustering]
 * Bio Turing. (2018). **How to read PCA biplots and scree plots** [article]. Retrieved from: https://blog.bioturing.com/2018/06/18/how-to-read-pca-biplots-and-scree-plots/
 * Xi Cheng. (2020). **Preprocessing of categorical predictors in SVM, KNN, and KDC** [article]. Retrieved from: https://stats.libretexts.org/Bookshelves/Computing_and_Modeling/RTG%3A_Classification_Methods/4%3A_Numerical_Experiments_and_Real_Data_Analysis/Preprocessing_of_categorical_predictors_in_SVM%2C_KNN_and_KDC_(contributed_by_Xi_Cheng)
-
+* **Optimal Number of Clusters** [article]. Retrived from: https://www.datanovia.com/en/lessons/determining-the-optimal-number-of-clusters-3-must-know-methods/ 
 ................................................................................
 
 
@@ -688,21 +693,21 @@ From pca summary, PC1 shows 37% variance in the data, PC2 shows 50% variance in 
 Plot the scree plot to disply the same, scree plot y-axis is variance nothing but the square of the SD. 
 ```{r}
 # scree plot
-plot(pca_md, type = 'l')
+plot(pca_md, type = 'l', col = 'blue')
 ```
 
-From scree plot PC1, PC2, PC3, and PC4 are enough to describe the data. 
+From scree plot PC1, PC2, PC3, and PC4 are describes 62% variance in the data.
 
 From 'https://www.originlab.com/doc/Origin-Help/PrincipleComp-Analysis', found if the relationship is weak between variables, PCA does not work well to reduce data. For MD data more than 3 PC components describe the data, not sure how well PCA will work. 
 
 ### Correlation between variables and principal componenets:
 
-Create another dataset use `cbind` with original ADHD data along with PC1, PC2, and PC3.
+Create another dataset use `cbind` with original MD data along with PC1, PC2, PC3, and PC4.
 
 ```{r}
 # combine dataset
 md_df_2 <- cbind(MD_df, pca_md$x)
-# %>% column_spec(which(ADHD_df_2[,19] > 0.69) , color = 'white', background = 'maroon')
+
 # cor plot
 cor(MD_df, md_df_2[, 16:19]) %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down") 
 ```
@@ -757,7 +762,17 @@ var_md$loadings
 corrplot(var_md$loadings[,1:4], is.corr = FALSE)
 ```
 
-Varimax loading interprets : PC1 negatively co-relate with MD.Q1g , PC2 positively co-relate with MD.Q1i and PC3 positively co-relate with MD.Q1k and PC4 negatively co-relate with MD.Q1m.
+Varimax loading interprets : 
+
+* PC1 negatively co-relate with MD.Q1g 
+* PC2 positively co-relate with MD.Q1i 
+* PC3 positively co-relate with MD.Q1k  
+* PC4 negatively co-relate with MD.Q1m.
+
+### PCA of MD analysis
+
+The PCA of MD shows first principle component have 38% of the variance in the data. To get 90% of the variance, we need to include 11 of the principal components. This reduction reduce features 15 to 11.
+
 
 ## General PCA
 
@@ -826,6 +841,8 @@ fviz_pca_biplot(result.pca, repel = TRUE,
 
 ### Access to the PCA results
 
+[TO Do: Explanation]
+
 ```{r}
 # Eigenvalues
 # eig.val <- get_eigenvalue(result.pca)
@@ -842,3 +859,92 @@ fviz_pca_biplot(result.pca, repel = TRUE,
 # res.ind$contrib        # Contributions to the PCs
 # res.ind$cos2           # Quality of representation 
 ```
+
+### k-means clustering
+
+
+In k-means clustering, first creates unnamed/new observations that serve as "centroids", which are then used to compute the Euclidean distance between the centroid and the surrounding observations, which then assigns them into a category
+Then, it takes the average of all of the points in each category and recomputes the centroid based on this average. The algorithm then runs again using these new centroids.
+The process ends when there is no change in centroid position between one run of the clustering algorithm and another.
+
+To perform cluster analysis, first need to select the optimal clusters to do that there are some methods. 
+
+* Elbow method
+* Average silhouette method
+* Gap statistics
+
+We’ll use the following R packages:
+
+`factoextra` to determine the optimal number clusters for a given clustering methods and for data visualization.
+`NbClust` for computing about 30 methods at once, in order to find the optimal number of clusters.
+
+fviz_nbclust below are the parameter description:
+
+* df: numeric matrix or data frame
+* FUNcluster: a partitioning function. Allowed values include kmeans, pam, clara and hcut (for hierarchical clustering).
+* method: the method to be used for determining the optimal number of clusters.
+
+Standadize the data, set mean and standard deviation. 
+
+```{r}
+
+# standadize the data 
+means <- apply(genl,2,mean)
+sds <- apply(genl,2,sd)
+nor = scale(genl,center=means,scale=sds)
+
+# Elbow method
+fviz_nbclust(nor, kmeans, method = "wss") +
+    geom_vline(xintercept = 6, linetype = 2)+
+  labs(subtitle = "Elbow method")
+
+# Silhouette method
+fviz_nbclust(nor, kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+# Gap statistic
+# nboot = 50 to keep the function speedy. 
+# recommended value: nboot= 500 for your analysis.
+# Use verbose = FALSE to hide computing progression.
+set.seed(140)
+fviz_nbclust(nor, kmeans, nstart = 25,  method = "gap_stat", nboot = 50)+
+  labs(subtitle = "Gap statistic method")
+
+```
+
+* Elbow method: 6 clusters solution suggested
+* Silhouette method: 2 clusters solution suggested
+* Gap statistic method: 5 clusters solution suggested
+
+The disadvantage of elbow and average silhouette methods is that, they measure a global clustering characteristic only. A more sophisticated method is to use the gap statistic which provides a statistical procedure to formalize the elbow/silhouette heuristic in order to estimate the optimal number of clusters.
+
+According to these observations, it’s possible to define k = 5 as the optimal number of clusters in the data.
+
+```{r}
+set.seed(500)
+kmeans_res <- kmeans(nor, 5, nstart = 25)
+kmeans_res
+```
+
+```{r}
+# cluster visualization
+fviz_cluster(kmeans_res, data = genl,
+             ellipse.type = "convex",
+             ggtheme = theme_classic())
+```
+
+
+
+Calculate each numeric variables mean value for each cluster, and then output the resulting table:
+
+```{r}
+aggregate(genl, by=list(cluster=kmeans_res$cluster), mean) %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down") 
+```
+
+Based on the output above we’d profile our groups as follows:
+
+* Cluster 1: Have moderate incidence of ADHD and mental disorder, and less violence.
+* Cluster 2: Have low incidence of ADHD and mental disorder.
+* Cluster 3: Have high incidence of ADHD and low incidence of mental disorder.
+* Cluster 4: Have high incidence of ADHD and moderate incidence of mental disorder.
+* Cluster 5: Have moderate incidence of ADHD and mental disorder, and more violence.
