@@ -23,6 +23,52 @@ library(stats)
 library(kableExtra)
 library(factoextra)
 library(kableExtra)
+library(kernlab)        # SVM methodology
+library(e1071)          # SVM methodology
+library(RColorBrewer)   # customized coloring of plots
+library(Boruta)         # feature selection
+library(caret)
+library(rsample)        # train-test split
+library(lattice)
+
+#User-defined function
+plot_corr_matrix <- function(dataframe, significance_threshold){
+  title <- paste0('Correlation Matrix for significance > ',
+                  significance_threshold)
+  
+  df_cor <- dataframe %>% mutate_if(is.character, as.factor)
+  
+  df_cor <- df_cor %>% mutate_if(is.factor, as.numeric)
+  #run a correlation and drop the insignificant ones
+  corr <- cor(df_cor, use = 'na.or.complete')
+  #prepare to drop duplicates and correlations of 1     
+  corr[lower.tri(corr,diag=TRUE)] <- NA 
+  #drop perfect correlations
+  corr[corr == 1] <- NA 
+  #turn into a 3-column table
+  corr <- as.data.frame(as.table(corr))
+  #remove the NA values from above 
+  corr <- na.omit(corr) 
+  #select significant values  
+  corr <- subset(corr, abs(Freq) > significance_threshold) 
+  #sort by highest correlation
+  corr <- corr[order(-abs(corr$Freq)),] 
+  #print table
+  # print(corr)
+  #turn corr back into matrix in order to plot with corrplot
+  mtx_corr <- reshape2::acast(corr, Var1~Var2, value.var="Freq")
+  
+  #plot correlations visually
+  corrplot(mtx_corr,
+           title=title,
+           mar=c(0,0,1,0),
+           method='color', 
+           tl.col="black", 
+           na.label= " ",
+           addCoef.col = 'black',
+           number.cex = .9)
+}
+
 ```
 
 ## Authorship
@@ -141,6 +187,9 @@ genl <- genl %>% tibble() %>% drop_na() #drop NA values
 #revisit genl
 dim(genl) #175 - 142 = 33 dropped rows
 colSums(is.na(genl)) #verify no NAs
+
+#save dataset for Q3 (in case of "tampering" during Q1, Q2):
+q3_data <- genl
 ```
 
 Our dataset has been reduced from 175 observations x 15 variables to 142 observations x 14 variables and from numerous NA values across multiple variables to no NA values.
@@ -181,6 +230,7 @@ Moving on to our numeric distributions:
 fig2 <- inspectdf::inspect_num(genl) %>% 
     show_plot()
 fig2
+
 ```
 
 From the histograms above we see that:
@@ -195,6 +245,7 @@ With insight gained via variable distributions, we move on to observing the pair
 ```{r}
 #paired plot of numeric variables
 pairs(genl %>% select_if(is.numeric))
+
 #Correlation matrix for numeric variables
 genl_corr <- genl %>%
     select_if(is.numeric) %>%
@@ -411,51 +462,189 @@ In the Appendix, we've also provided code (with a more succinct write up) for ou
 ................................................................................
 
 
-# 3. Support Vector Modeling
+# 3. Support Vector Machine
 
-Support Vector Modeling (SVM) is a supervised machine learning model that uses classification algorithms for two-group classification problems. After giving an SVM model sets of labeled training data for each category, they’re able to categorize new text.SVM can be used for both regression and classification tasks however is widely used in classification objectives.
+A Support Vector Machine (SVM) is a supervised machine learning algorithm that creates a hyperplane / decision boundary based on labeled data. *Support vectors* are the data points closest to the hyperplane, that influence the hyperplane’s location and orientation. Using support vectors, we maximize the margin, the space between prospective classes, by ensuring that our classifier is equidistant from the closest observation in each class. 
 
-```{r}
-# #adhd <-md_df %>% tibble::add_column(Has_ADHD = if_else(genl$ADHD.Total<=35, "TRUE", "FALSE"))#add column 
-# head(MD_df)
-# #adhd[adhd==""] <- NA
-# # Regression example
-# set.seed(123)
-# indexes = caret::createDataPartition(MD_df$MD.Q1a, p = .9, list = F)
-# train = MD_df[indexes, ]
-# test = MD_df[-indexes, ]
-```
+By use of support vectors our SVM is capable of finding the optimal decision boundary to distinctly classify our data. In our case, we're going to model suicide attempts from the `genl` dataset with a radial and a linear decision boundary. We'll then interpret the performance of each model side-by-side.
 
-```{r warning=FALSE, message=FALSE, comment=FALSE}
-# Fitting SVM to the Training set
-# library(e1071)
-# 
-# classifier = svm(formula = MD.Q1a ~ .,
-# 				data = train,
-# 				type = 'C-classification',
-# 				kernel = 'linear')
-
-```
-
+To start, we re-familiarize ourselves with the data at hand and our dependent variable (`Suicide`):
 
 ```{r}
-# Predicting the Test set results
-# y_pred = predict(classifier, newdata = test)
-# y_pred
+#Ensure it's the data of interest:
+genl <- q3_data
+
+#Refamiliarize ourselves with the genl dataset:
+dim(genl) #175 - 142 = 33 dropped rows
+head(genl)
+
+#Visualize suicide attempt counts:
+as.data.frame(table(genl$Suicide))
+
 ```
+
+We're dealing with 142 observations x 14 variables - 10 of type factors, 4 of type double, and a dependent variable `Suicide` where 97/142 (68.3%) of patients have not attempted suicide and 45/142 (31.7%) of patients have.
+
+### Feature Exclusion
+
+We'll narrow our dataset further by exploring our independent variable's correlation with `Suicide`, with one another, and then verify our assumptions with the **Boruta** function for feature ranking and selection.
+
+We start by measuring the strength of correlation to `Suicide` for independent variables:
 
 ```{r}
-# Making the Confusion Matrix
-# cm = table(test, y_pred)
-# 
-# ```
-# ```{r}
-# # installing library ElemStatLearn
-# library(ElemStatLearn)
-#   
-# # Plotting the training data set results
+#Compute proportion of missing data per variable
+v <- colnames(genl)
+incomplete <- function(x) sum(!complete.cases(x)) / 142
+Missing_Data <- sapply(genl[v], incomplete) 
+#head(missing) #verify
+
+#Compute correlation between each variable and Suicide
+target_corr <- function(x, y) cor(y, x, use = "na.or.complete")
+Suicide_Correlation <- sapply(genl[v], target_corr, y=genl$Suicide) 
+#head(c_target) #verify
+
+#Bind and output Missing Data and Correlation with Target
+MDCS <- data.frame(cbind(Missing_Data, Suicide_Correlation))
+MDCS %>%
+  kbl(caption = "Proportion of Missing Data vs. Correlation with Suicide") %>%
+  kable_minimal()
+
 ```
 
+From the above table we can extend that:
+
+* none of the variables in our set have missing values,
+* `Age`, `Disorderly.Conduct`, and `Non.subst.Dx` have a *weak* correlation with `Suicide`
+* `Abuse`, `MD.Total`, and `Subst.Dx` have the strongest correlation with `Suicide`,
+* remaining variables have a low-to-moderate correlation with `Suicide`.
+
+From this, we can see the 3 variables we may keep as well as those we may drop. For the remaining variables, we'll explore further to guide our decision.
+
+We measure the correlation between variables to observe multicollinearity:
+
+```{r}
+
+#Utilize custom-built correlation matrix generation function
+plot_corr_matrix(genl, 0.3)
+
+```
+
+**Multicollinearity is a concern** and that we may eliminate a larger portion of variables as a result. We'll proceed with only variables with strong predictive promise and / or unique value added.
+
+Based on these guidelines, it appears that we should proceed with at least `Abuse`, `MD.Total`, `Subst.Dx`, whereas variables `Sex`, `Court.order`, and `Hx.of.Violence` we'll decide after consulting the **Boruta** output.
+
+To address weak target correlation and multicollinearity we consider the exclusion of 7-10 variables : `Age`, `Race`, `Education`, `Disorderly.Conduct`, and `Non.subst.Dx` due to weak correlation with the target variable, `ADHD.Total` and `SUB.Total` due to multicollinearity, and `Sex`, `Court.order`, and `Hx.of.Violence` we'll decide after consulting our **Boruta** output.
+
+Before doing so, we utilize the **Boruta** function for feature ranking and selection:
+
+```{r, echo = F, eval = T, fig.height = 8, fig.width = 10}
+# Perform Boruta search
+boruta_output <- Boruta(Suicide ~ ., data=genl, doTrace=0, maxRuns = 1000)
+
+#Get significant variables including tentatives
+boruta_signif <- getSelectedAttributes(boruta_output, withTentative = TRUE)
+#print(boruta_signif)
+
+# Plot variable importance
+plot(boruta_output, cex.axis=.7, las=2, xlab="", main="Variable Importance")
+
+```
+
+From the above plot, we see that only two variables (`Abuse` and `MD.TOTAL`) carry much importance when we consider `Suicide` but in order to offer a more comprehensive representation, we'll also include the next 3 variables (`Race`, `Subst.Dx`, and `Court.order`). *It's worth noting that all variables score relatively low in feature importance which may be an early indication of difficulty in predicting `Suicide`.*
+
+We select the 5 features noted above, convert categorical features to type factor and then verify the dataset that we're proceeding to SVM model-building with:
+
+```{r, echo=F, eval=T}
+#head(genl)
+#Feature selection (address weak target correlation and multicollinearity)
+select_df <- genl[, c(3,5,7,11,12,14)]
+
+#Convert categorical variables to factor
+select_df$Suicide <- as.factor(select_df$Suicide)
+select_df$Race <- as.factor(select_df$Race)
+select_df$Court.order <- as.factor(select_df$Court.order)
+select_df$Subst.Dx <- as.factor(select_df$Subst.Dx)
+select_df$Abuse <- as.factor(select_df$Abuse)
+
+#Verify new dataset
+head(select_df)
+
+```
+
+We observe 5 independent variables (1 numeric, 4 factor) and find that our data is of the proper form aside from the fact that we have numerous independent variables of type factor that we may have to convert to "one hot" dummie variables (ie. unique variables for each level of the factor variable where a 1 is present).
+
+### Model Building & Selection
+
+We proceed to train-test split our data (for later assessment), convert categorical variables into "one hot" dummie variables, train our model, and consult the summary statistics:
+
+```{r, echo=FALSE, eval=TRUE}
+
+#Set set (replicability)
+set.seed(123)
+
+#Perform train-test Split
+train_split <- initial_split(select_df, prop = 0.75)
+training <- training(train_split)
+test <- testing(train_split)
+results <- test$Suicide #hold actual test values for later comparison
+test$Suicide <- NA #set initial test values to NA, to then be predicted
+
+#Convert categorical variables into dummie variables (one hot or dummyvars)
+dummies <- dummyVars(~ ., data=training[,-4]) #Omit col 4 (Suicide) from dummy var generation
+d_train <- as.data.frame(predict(dummies, training[,-4]))
+d_train$Suicide <- training$Suicide
+
+dummies <- dummyVars(~ ., data=test[,-4])
+d_test <- as.data.frame(predict(dummies, test[,-4]))
+d_test$Suicide <- test$Suicide
+
+#head(d_train) #verify dummie variables
+
+
+#Set gamma list and use variable cost to determine optimal model parameters (for SVM modeling)
+gammalist <- c(0.005,0.01,0.015,0.02,0.025,0.03,0.035,0.04,0.045,0.05)
+
+#1st SVM application: radial kernel
+svm_radial <- tune.svm(Suicide ~., data=d_train, kernel='radial', cost=2^(-1:5), gamma = gammalist)
+# summary(svm_radial)
+# summary(svm_radial$best.model)
+svm1 <- predict(svm_radial$best.model, d_test[,-20])
+#confusionMatrix(svm1, results)
+
+#2nd SVM application: linear kernel
+svm_linear <- tune.svm(Suicide ~., data=d_train, kernel='linear', cost=1, gamma = 0.005)
+# summary(svm_linear)
+# summary(svm_linear$best.model)
+svm2 <- predict(svm_linear$best.model, d_test[,-20])
+#confusionMatrix(svm2, results)
+
+
+#Convert performance statistics to tabular form (for output / interpretation):
+AccuracySVM1 <- confusionMatrix(svm1, results)$overall['Accuracy']
+AccuracySVM2 <- confusionMatrix(svm2, results)$overall['Accuracy']
+
+SVM_Model_1 <- confusionMatrix(svm1, results)$byClass
+SVM_Model_1 <- data.frame(SVM_Model_1)
+SVM_Model_1 <- rbind("Accuracy" = AccuracySVM1, SVM_Model_1)
+
+SVM_Model_2 <- confusionMatrix(svm2, results)$byClass
+SVM_Model_2 <- data.frame(SVM_Model_2)
+SVM_Model_2 <- rbind("Accuracy" = AccuracySVM2, SVM_Model_2)
+
+tabularview <- data.frame(SVM_Model_1, SVM_Model_2)
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+
+```
+
+The models share the same Accuracy and Prevalence, whereas `SVM_Model_1` (radial) outperformed `SVM_Model_2` (linear) in Specificity, Pos Pred Value, Neg Pred Value, Precision, and Balanced Accuracy while `SVM_Model_2` (linear) outperformed `SVM_Model_1` (radial) for Sensitivity, Recall, F1, Detection Rate, and Detection Prevalence. The performance was rather close but being that we're dealing with an imbalanced set (97/142 (68.3%) of patients have not attempted suicide), we use the Balanced Accuracy as our deciding factor and elect `SVM_Model_1` (radial).
+
+### Analysis
+
+It was nice to learn via application the effect of kernel selection. For a simpler model and one we believe is likely to be linearly separable, it may be best to start with a linear kernel, whereas when the data appears to be non-linear (which we believed to be the case here), we can start with a non-linear application and then compare back to a linear model to test our assumptions. In this case the radial kernel model did not perform leaps-and-bounds better than the linear kernel model but it did outperform it when we considered the fact that we were dealing with unbalanced data.
+
+It appears that both models were able to *relatively* accurately predict suicide for those who had attempted suicide in the past but each had a difficult time predicting non-suicidal patients. If the model were advanced further, this might be a case where accurately predicting positive (suicide) and remediating the situation (ie. providing help to the patient) could supercede the model's inability to predict non-suicide but this is a very sensitive topic and the model would absolutely have to best tested to a much deeper degree and brought to a much higher level of accuracy to even consider such an idea.
+
+In general though, we were surprised by the low accuracy of our SVM models provided the "clout" surrounding Support Vector Machines and their ability to accurately predict. The reason for a lower performance may have been because the null values we'd dropped (maybe there was valuable data therein), the variables we elected to focus upon, the way in which we applied the models, the nature of the data itself, or the simple fact that it's difficult to predict something like suicide because humans are creatures of nuance and with that comes a great level of unpredictability.
 
 
 ................................................................................
@@ -466,6 +655,7 @@ In completing this assignment, reference was made to the following:
 
 * MIT OpenCourseWare. (2018). **An Introduction to Clustering - Video 7: Hierarchical Clustering in R** [video]. Retrieved from: https://www.youtube.com/watch?v=GPOUGpF-Sno [hierarchical clustering]
 * Bio Turing. (2018). **How to read PCA biplots and scree plots** [article]. Retrieved from: https://blog.bioturing.com/2018/06/18/how-to-read-pca-biplots-and-scree-plots/
+* Xi Cheng. (2020). **Preprocessing of categorical predictors in SVM, KNN, and KDC** [article]. Retrieved from: https://stats.libretexts.org/Bookshelves/Computing_and_Modeling/RTG%3A_Classification_Methods/4%3A_Numerical_Experiments_and_Real_Data_Analysis/Preprocessing_of_categorical_predictors_in_SVM%2C_KNN_and_KDC_(contributed_by_Xi_Cheng)
 
 ................................................................................
 
