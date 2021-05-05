@@ -493,7 +493,7 @@ as.data.frame(table(genl$Suicide))
 
 We're dealing with 142 observations x 14 variables - 10 of type factors, 4 of type double, and a dependent variable `Suicide` where 97/142 (68.3%) of patients have not attempted suicide and 45/142 (31.7%) of patients have.
 
-### Feature Exclusion
+## Feature Exclusion
 
 We'll narrow our dataset further by exploring our independent variable's correlation with `Suicide`, with one another, and then verify our assumptions with the **Boruta** function for feature ranking and selection.
 
@@ -581,7 +581,7 @@ head(select_df)
 
 We observe 5 independent variables (1 numeric, 4 factor) and find that our data is of the proper form aside from the fact that we have numerous independent variables of type factor that we may have to convert to "one hot" dummie variables (ie. unique variables for each level of the factor variable where a 1 is present).
 
-### Model Building & Selection
+## Model Building & Selection
 
 We proceed to train-test split our data (for later assessment), convert categorical variables into "one hot" dummie variables, train our model, and consult the summary statistics:
 
@@ -650,7 +650,7 @@ The models share the same Accuracy and Prevalence, whereas `SVM_Model_1` (radial
 
 In the Appendix, we've also provided code (with a more succinct write up) for our application of support vector machines to the entire dataset (~86% Accuracy) and our principal components ~74% Accuracy).
 
-### Analysis
+## Analysis
 
 It was nice to learn via application the effect of kernel selection. For a simpler model and one we believe is likely to be linearly separable, it may be best to start with a linear kernel, whereas when the data appears to be non-linear (which we believed to be the case here), we can start with a non-linear application and then compare back to a linear model to test our assumptions. In this case the radial kernel model did not perform leaps-and-bounds better than the linear kernel model but it did outperform it when we considered the fact that we were dealing with unbalanced data.
 
