@@ -12,7 +12,7 @@ output:
 ---
 
 ```{r setup, include=FALSE}
-knitr::opts_chunk$set(echo = FALSE, message = FALSE, warning = FALSE)
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
 #libraries
 library(dplyr)
 library(tidyr)
@@ -31,6 +31,9 @@ library(caret)
 library(rsample)        # train-test split
 library(lattice)
 library(NbClust)
+library(data.table)
+library(janitor)
+library(CGPfunctions)
 
 #User-defined function
 plot_corr_matrix <- function(dataframe, significance_threshold){
@@ -358,7 +361,7 @@ Next, we visit the scree plot:
 
 ```{r}
 # scree plot
-plot(pca_adhd, type = 'l')
+plot(pca_adhd, type = 'l', col = 'blue')
 ```
 
 If we recall from statistics: $var = sd^2$, where $var$ represents variance and $sd$ represents standard deviation.
@@ -446,7 +449,7 @@ We apply the **varimax()** function to the rotation variable of our principal co
 ```{r}
 # apply varimax 
 var_adhd <- varimax(pca_adhd$rotation)
-
+var_adhd$loadings
 #var_adhd$loadings #corrplot is more succinct, easier to interpret
 
 corrplot(var_adhd$loadings[,1:3], is.corr = FALSE)
@@ -454,9 +457,9 @@ corrplot(var_adhd$loadings[,1:3], is.corr = FALSE)
 
 We elect to interpret the correlation plot (over the loadings output) due to its clarity and succinctness. From the above output, we can see that:
 
-* `PC1` is strongly (negatively) correlated with `ADHD.Total`,
-* `PC2` is strongly (negatively) correlated with `ADHD.Q16`, and 
-* `PC3` is strongly (positively) correlated with `ADHD.Q5`
+* `PC1` is strongly (positively) correlated with `ADHD.Total`,
+* `PC2` is strongly (positively) correlated with `ADHD.Q16`, and 
+* `PC3` is strongly (negatively) correlated with `ADHD.Q5`
 
 Varimax provided in 2 lines of code what it took multiple plots, iterations, and interpretations to come to when referring to biplots: the strongest correlate for each principal component.
 
@@ -839,26 +842,17 @@ fviz_pca_biplot(result.pca, repel = TRUE,
                 )
 ```
 
-### Access to the PCA results
-
-[TO Do: Explanation]
+#### VARIMAX
 
 ```{r}
-# Eigenvalues
-# eig.val <- get_eigenvalue(result.pca)
-# eig.val
-#   
-# # Results for Variables
-# res.var <- get_pca_var(result.pca)
-# res.var$coord          # Coordinates
-# res.var$contrib        # Contributions to the PCs
-# res.var$cos2           # Quality of representation 
-# # Results for individuals
-# res.ind <- get_pca_ind(result.pca)
-# res.ind$coord          # Coordinates
-# res.ind$contrib        # Contributions to the PCs
-# res.ind$cos2           # Quality of representation 
+summary(result.pca)
+var_genl <- varimax(result.pca$rotation)
+corrplot(var_genl$loadings[,1:11], is.corr = FALSE)
 ```
+
+PCA of General dataset
+
+The PCA of genl shows first principle component have 19% of the variance in the data. To get 93% of the variance, we need to include 11 of the principal components. This reduction reduce features from 14 to 11.
 
 ### k-means clustering
 
@@ -948,3 +942,277 @@ Based on the output above we’d profile our groups as follows:
 * Cluster 3: Have high incidence of ADHD and low incidence of mental disorder.
 * Cluster 4: Have high incidence of ADHD and moderate incidence of mental disorder.
 * Cluster 5: Have moderate incidence of ADHD and mental disorder, and more violence.
+
+### SVM 
+
+First we need to identify NAs using `vis_miss` from visdat package. Then replace NAs with Mode. 
+
+```{r, fig.width=10, fig.height=5, fig.align='center'}
+visdat::vis_miss(data)
+```
+
+```{r, fig.width=10, fig.height=5, fig.align='center'}
+mode <- function(df, ...) {
+  tb <- table(df)
+  which(tb == max(tb)) %>% sort %>% `[`(., 1) %>% names
+}
+
+impute <- function(df, fun) {
+  fval <- fun(df, na.rm = TRUE)
+  y <- ifelse(is.na(df), fval, df)
+  return(y)
+}
+
+data_all <- data %>% 
+  select(-Initial) %>% 
+  mutate(
+    Alcohol = impute(Alcohol, mode),
+    THC     = impute(THC, mode),
+    Cocaine = impute(Cocaine, mode),
+    Stimulants = impute(Stimulants, mode),
+    Sedative.hypnotics = impute(Sedative.hypnotics, mean),
+    Opioids  = impute(Opioids, mean),
+    Court.order = impute(Court.order, mean),
+    Education = impute(Education, mode),
+    Hx.of.Violence = impute(Hx.of.Violence, mode),
+    Disorderly.Conduct = impute(Disorderly.Conduct, mode),
+    Suicide = impute(Suicide, mode),
+    Abuse = impute(Abuse, mode),
+    Non.subst.Dx = impute(Non.subst.Dx, mode),
+    Subst.Dx = impute(Subst.Dx, mode),
+    Psych.meds. = impute(Psych.meds., mode)
+    ) %>% 
+  mutate_if(is.character, as.numeric)
+
+visdat::vis_miss(data_all)
+
+```
+
+Plot, suicide % over other category such as Age, Sex, Education, Cocaine, Hx.of.Violence, Disorderly.Conduct, Abuse, Non.subst.Dx, Subst.Dx, and  Psych.meds.
+
+```{r}
+p <- data_all %>% select(c('Age','Suicide')) 
+
+setDT(p)[Age <10, agegroup := "0-10"]
+p[Age >=10 & Age <20, agegroup := "10-20"]
+p[Age >=20 & Age <30, agegroup := "20-30"]
+p[Age >=30 & Age <40, agegroup := "30-40"]
+p[Age >=40 & Age <50, agegroup := "40-50"]
+p[Age >=50 & Age <60, agegroup := "50-60"]
+p[Age >=60 & Age <70, agegroup := "60-70"]
+
+PlotXTabs2(p, agegroup, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Age Group")
+```
+
+Agegroup (30-40) committed more suicide and agegroup (40-50) is the second highest.
+
+Age group by suicide commit:
+
+* 10 - 20 - No suicide
+* 20 - 30 - 29%
+* 30 - 40 - 38%
+* 40 - 50 - 30%
+* 50 - 60 - 19%
+* 60 - 70 - No suicide
+
+```{r}
+p <- data_all %>% select(c('Sex','Suicide')) 
+PlotXTabs2(p, Sex, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Sex")
+```
+
+females attempted suicide more than males.
+
+* Female - 37%
+* Male - 21%
+
+```{r}
+p <- data_all %>% select(c('Race','Suicide')) 
+PlotXTabs2(p, Race, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Race")
+```
+
+Suicide committed by Race: 
+
+* Other - 50%
+* White - 39%
+* African American - 20%
+
+```{r, fig.align='center', fig.width=5}
+p <- data_all %>% select(c('Education','Suicide')) 
+PlotXTabs2(p, Education, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by level of Education")
+```
+
+Higher educated less likely committed suicide than others. 
+
+```{r}
+p <- data_all %>% select(c('Hx.of.Violence','Suicide')) 
+PlotXTabs2(p, Hx.of.Violence, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Violence")
+```
+
+Violant people commited more suicide than non-violant. 
+
+```{r}
+p <- data_all %>% select(c('Disorderly.Conduct','Suicide')) 
+PlotXTabs2(p, Disorderly.Conduct, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Disorderly conduct")
+```
+
+This is little suprising, non Disorderly conduct committed more suicide than Disorderly Conduct.
+
+```{r}
+p <- data_all %>% select(c('Abuse','Suicide')) 
+PlotXTabs2(p, Abuse, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Abuse")
+```
+
+Suicide commit by Abuse category:
+
+* Emotional and P&S&E - 75%
+* Sexual - 60%
+* S&E - 50%
+* P&S - 33%
+
+Other abuse category are less. 
+
+```{r}
+p <- data_all %>% select(c('Non.subst.Dx','Suicide')) 
+PlotXTabs2(p, Non.subst.Dx, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Non subst Dx")
+```
+
+Non-substance related Dx : Suicide commit Non-subset Dx one is highest and Non-substance related Dx none is lowest. 
+
+```{r}
+p <- data_all %>% select(c('Subst.Dx','Suicide')) 
+PlotXTabs2(p, Subst.Dx, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Subst Dx")
+```
+
+Substance related Dx : Suicide commit substance related Dx two and three are highest and substance related Dx one is lowest. 
+
+```{r}
+p <- data_all %>% select(c('Psych.meds.','Suicide')) 
+PlotXTabs2(p, Psych.meds., Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Psych.meds.")
+```
+
+Suicide commit by Psychiatric Meds:
+
+* more than one psychotropic med - 41%
+* one psychotropic med - 25%
+* None - 37%
+
+### SVM Model using entire dataset and PCA output
+
+We will perform SVM with entire dataset. Then, create another SVM model on reduced dimension which performed PCA with `genl` dataset.  Compare the result matrices of these model to find the best one. 
+
+```{r}
+data_all_new <- data_all %>% select(-Suicide, everything())
+
+#Set set (replicability)
+set.seed(700)
+
+#Perform train-test Split
+intrain <- createDataPartition(data_all_new$Suicide, p = 0.75, list = FALSE)
+training_all <- data_all_new[intrain,]
+test_all <- data_all_new[-intrain,]
+results <- test_all$Suicide #hold actual test values for later comparison
+test_all$Suicide <- NA 
+
+
+gammalist <- c(0.005,0.01,0.015,0.02,0.025,0.03,0.035,0.04,0.045,0.05)
+tune.out_radial <- tune.svm(as.factor(Suicide) ~., data=training_all, 
+                 kernel='radial', cost=2^(1:5), gamma = gammalist)
+
+tune.out_linear <- tune.svm(as.factor(Suicide) ~., data=training_all, 
+                 kernel='linear', cost=2^(1:5), gamma = gammalist)
+
+svm3 <- predict(tune.out_radial$best.model, test_all[,-dim(test_all)[2]])
+svm4 <- predict(tune.out_linear$best.model, test_all[,-dim(test_all)[2]])
+
+#Convert performance statistics to tabular form (for output / interpretation):
+AccuracySVM3 <- confusionMatrix(svm3, as.factor(results))$overall['Accuracy']
+AccuracySVM4 <- confusionMatrix(svm4, as.factor(results))$overall['Accuracy']
+
+SVM_Model_3 <- confusionMatrix(svm3, as.factor(results))$byClass
+SVM_Model_3 <- data.frame(SVM_Model_3)
+SVM_Model_3 <- rbind("Accuracy" = AccuracySVM3, SVM_Model_3)
+
+SVM_Model_4 <- confusionMatrix(svm4, as.factor(results))$byClass
+SVM_Model_4 <- data.frame(SVM_Model_4)
+SVM_Model_4 <- rbind("Accuracy" = AccuracySVM4, SVM_Model_4)
+
+tabularview <- data.frame(SVM_Model_3, SVM_Model_4)
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+```
+
+The models share the same Accuracy and Neg Pred Value, whereas  SVM_Model_1 (radial) outperformed SVM_Model_2 (linear) in Sensitivity, Recall, Detection Ratee, F1, and Detection Prevalence while SVM_Model_2 (linear) outperformed SVM_Model_1 (radial) for Specificity, Pos Pred Value, Precision, and Balanced Accuracy. 
+
+#### SVM Model building using PCA
+
+From `Varimax` plot we found, to get above 90% variance in data we need to include 11 principal componenets. We are going to exclude 'ADHD.Total','Non.subst.Dx', 'Subst.Dx', from the dataset.
+
+Split the data in to train and test, apply model, fit the model, predict the model using test data, calculate results matrices to see the model performance. 
+
+```{r}
+genl_2 <- data[c(2:4,23,39)]
+genl_2$SUB.Total <- sub$SUB.Total
+genl_2 <- cbind(genl_2, hstry)
+
+# imputation
+genl_3 <- genl_2 %>% 
+  mutate(
+    SUB.Total = impute(SUB.Total, mode),
+    Court.order = impute(Court.order, mode),
+    Education = impute(Education, mode),
+    Hx.of.Violence = impute(Hx.of.Violence, mode),
+    Disorderly.Conduct = impute(Disorderly.Conduct, mode),
+    Suicide = impute(Suicide, mode),
+    Abuse = impute(Abuse, mode),
+    Non.subst.Dx = impute(Non.subst.Dx, mode),
+    Subst.Dx = impute(Subst.Dx, mode),
+    Psych.meds. = impute(Psych.meds., mode)
+    ) %>% 
+  mutate_if(is.character, as.numeric)
+
+```
+
+```{r}
+genl_svm <- genl_3 %>% select(-c('ADHD.Total', 'Non.subst.Dx', 'Subst.Dx')) %>% select(-Suicide, everything())
+
+#Set set (replicability)
+set.seed(900)
+
+#Perform train-test Split
+intrain <- createDataPartition(genl_svm$Suicide, p = 0.75, list = FALSE)
+training_not_all <- genl_svm[intrain,]
+test_not_all <- genl_svm[-intrain,]
+results_not_all <- test_not_all$Suicide #hold actual test values for later comparison
+test_not_all$Suicide <- NA 
+
+
+gammalist <- c(0.005,0.01,0.015,0.02,0.025,0.03,0.035,0.04,0.045,0.05)
+
+tune.out_radial_5 <- tune.svm(as.factor(Suicide) ~., data=training_not_all, 
+                 kernel='radial', cost=2^(1:5), gamma = gammalist)
+
+tune.out_linear_6 <- tune.svm(as.factor(Suicide) ~., data=training_not_all, 
+                 kernel='linear', cost=2^(1:5), gamma = gammalist)
+
+svm5 <- predict(tune.out_radial_5$best.model, test_not_all[,-dim(test_not_all)[2]])
+svm6 <- predict(tune.out_linear_6$best.model, test_not_all[,-dim(test_not_all)[2]])
+
+#Convert performance statistics to tabular form (for output / interpretation):
+AccuracySVM5 <- confusionMatrix(svm5, as.factor(results_not_all))$overall['Accuracy']
+AccuracySVM6 <- confusionMatrix(svm6, as.factor(results_not_all))$overall['Accuracy']
+
+SVM_Model_5 <- confusionMatrix(svm5, as.factor(results_not_all))$byClass
+SVM_Model_5 <- data.frame(SVM_Model_5)
+SVM_Model_5 <- rbind("Accuracy" = AccuracySVM5, SVM_Model_5)
+
+SVM_Model_6 <- confusionMatrix(svm6, as.factor(results_not_all))$byClass
+SVM_Model_6 <- data.frame(SVM_Model_6)
+SVM_Model_6 <- rbind("Accuracy" = AccuracySVM6, SVM_Model_6)
+
+tabularview <- data.frame(SVM_Model_3, SVM_Model_4, SVM_Model_5, SVM_Model_6)
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+```
+
+Model 5 (Radial) has high accuracy, Pricision, and F1 than Model 6 (linear). 
+Model 5 works fine with predicting 'no' but have  higher class error in predicting ‘yes’. Similaryl, Model 6 correctly predict for 'no' but completely incorectly predict for 'yes'. Incorect prediction on 'yes' class may be the cause of Multicollinearity.  
+Model 3 and Model 4 are the better models than Model 5 and Model 6 aspect of accuracy, Specificity, F1.
+
