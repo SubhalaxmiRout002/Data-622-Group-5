@@ -1,0 +1,1233 @@
+---
+title: "DATA622_HW4"
+author: "Group 5"
+date: "`r Sys.Date()`" # Due 5/7/2021
+output: 
+ html_document:
+    toc: true
+    toc_float: true
+    code_folding: hide
+    theme: flatly
+    highlight: tango
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(message = FALSE, warning = FALSE)
+#libraries
+library(dplyr)
+library(tidyr)
+library(ggplot2)
+library(inspectdf)
+library(corrplot)
+library(stats)
+library(kableExtra)
+library(factoextra)
+library(kableExtra)
+library(kernlab)        # SVM methodology
+library(e1071)          # SVM methodology
+library(RColorBrewer)   # customized coloring of plots
+library(Boruta)         # feature selection
+library(caret)
+library(rsample)        # train-test split
+library(lattice)
+library(NbClust)
+library(data.table)
+library(janitor)
+library(CGPfunctions)
+
+#User-defined function
+plot_corr_matrix <- function(dataframe, significance_threshold){
+  title <- paste0('Correlation Matrix for significance > ',
+                  significance_threshold)
+  
+  df_cor <- dataframe %>% mutate_if(is.character, as.factor)
+  
+  df_cor <- df_cor %>% mutate_if(is.factor, as.numeric)
+  #run a correlation and drop the insignificant ones
+  corr <- cor(df_cor, use = 'na.or.complete')
+  #prepare to drop duplicates and correlations of 1     
+  corr[lower.tri(corr,diag=TRUE)] <- NA 
+  #drop perfect correlations
+  corr[corr == 1] <- NA 
+  #turn into a 3-column table
+  corr <- as.data.frame(as.table(corr))
+  #remove the NA values from above 
+  corr <- na.omit(corr) 
+  #select significant values  
+  corr <- subset(corr, abs(Freq) > significance_threshold) 
+  #sort by highest correlation
+  corr <- corr[order(-abs(corr$Freq)),] 
+  #print table
+  # print(corr)
+  #turn corr back into matrix in order to plot with corrplot
+  mtx_corr <- reshape2::acast(corr, Var1~Var2, value.var="Freq")
+  
+  #plot correlations visually
+  corrplot(mtx_corr,
+           title=title,
+           mar=c(0,0,1,0),
+           method='color', 
+           tl.col="black", 
+           na.label= " ",
+           addCoef.col = 'black',
+           number.cex = .9)
+}
+
+```
+
+## Authorship
+
+**Group 5:** 
+
+* Don (Geeth) Padmaperuma,
+* Subhalaxmi Rout, 
+* Isabel R., and
+* Magnus Skonberg
+
+
+# Background
+
+The purpose of this assignment was to explore Clustering, Principal Component Analysis, and Support Vector Machines.
+
+*Clustering* is used as a means of grouping a set of observations in a way that those in the same group are more similar to one another than those in other groups. *Principal Component Analysis* is used to a means of variable reduction where it's our aim to preserve as much useful information as possible. In short, we trade a little accuracy for simplicity. *Support Vector Machines*, on another note, are a supervised learning technique used for classification and regression analysis. We're going to apply it as a means of classification based on one of the variables in our set (suicide).
+
+## Our Approach
+
+We'll perform a relatively in-depth exploratory data analysis (EDA) to better familiarize ourselves with the data at hand and then we'll explore each of the aforementioned methods.
+
+Grouping our patients via k-means / hierarchical clustering and profiling these groups based on shared characteristics, focusing upon a subset of our data (ie. ADHD or mood disorder) in applying Principal Component Analysis, and applying a Support Vector Machine model based on whether or not a patient has attempted suicide.
+
+
+................................................................................
+
+# The Data
+
+The data at hand is based on a real life research project and deals with a number of measures of mental health and well-being - attention deficit hyperactivity disorder (ADHD), mood / mental disorder (MD), substance abuse, etc. 
+
+Being that our exploration and application of methods can take on many forms and head in a nearly infinite number of directions, the room for creativity is without bounds.
+
+We start by loading in our data and utilizing built-in head() and dim() functions for an early read.
+
+```{r}
+#Load in data
+#data <- read.csv("https://raw.githubusercontent.com/SubhalaxmiRout002/Data-622-Group-5/main/HW%204/ADHD_data.csv")
+data <- read.csv("ADHD_data.csv")
+#head(data)
+#dim(data)
+```
+
+## Exploratory Data Analysis
+
+From our initial read of our dataset's dimensions and first 6 entries, we observe that we're dealing with a 175 observation x 54 variable dataset. Our initial dataset is broad and may be difficult to manage / make sense of. With the motivation of clarification in mind, we thus break our larger dataset into subsets:
+
+1. **genl**: all identifier variables (race, sex, education), total score variables, and history-related variables.
+2. **adhd**: all adhd related question and total score variables.
+3. **md**: all mental disorder related question and total score variables.
+4. **sub**: all substance abuse related question and total score variables.
+5. **hstry**: all violence, abuse, and substance history related variables.
+
+We may end up merging these subsets, pulling individual variables, or exploring individual subsets later but this provides a means of effectively recognizing where related variables lie while simultaneously providing smaller, more manageable dataframes to explore and work upon.
+
+Once these dataframes are created, we see that **adhd** and **md** have total score variables whereas **sub** does not, even though its data (across variables) maintains a consistent scoring system. Thus, we take it upon ourselves to add this variable for sake of consistency:
+
+```{r}
+genl <- data[c(1:4,23,39)]
+#head(genl) #drop initial, add sub and hstry (all vars or "total score")
+#we may want to use these separately (ie. for Q2)
+adhd <- data[c(5:23)]
+md <- data[c(24:39)]
+sub <- data[c(40:45)]
+hstry <- data[c(46:54)]
+sub$SUB.Total <- rowSums(sub) #add Total column to sub
+#Finalize genl dataframe (for EDA)
+genl$SUB.Total <- sub$SUB.Total #add SUB.Total to genl
+genl <- genl[c(-1)] #drop Initial
+genl <- cbind(genl, hstry) #add history variables back in with general
+head(genl)
+```
+
+We subset our dataframes (as noted above), add a "total" column for **sub**, and finalize our **genl** dataframe by merging the total column for **sub**, dropping the `Initial` variable, and adding all **hstry** variables back in.
+
+We lean on the data dictionary (provided with our .xlsx file) to outline the variables at hand:
+
+* `Age`: quantitative variable representative of the individual's age.
+* `Sex`: categorical variable representative of the individual's sex (male-1, female-2).
+* `Race`: categorical variable representative of the individual's race (white-1, african american-2, hispanic-3, asian-4, native american-5, other / missing data-6).
+* `ADHD.Total`: quantitative variable representative of the individual's total self-report score for ADHD scale. It's the cumulative score for 18 questions with a scoring metric of never-0, rarely-1, sometimes-2, often-3, and very often-4.
+* `MD.TOTAL`: quantitative variable representative of the individual's total self-report score for mental disorder questions. It's the cumulative score for 15 questions with a scoring metric of no-0, yes-1; question 3: no problem-0, minor-1, moderate-2, and serious-3.
+* `SUB.Total`: quantitative variable representative of the individual's total self-report score for substance abuse related questions. It's the cumulative score across 6 categories with a scoring metric of no use-0, use-1, abuse-2, and dependence-3.
+* `Court.order`: categorical variable representative of whether the individual's case was court ordered (No-0, Yes-1).
+* `Education`: categorical variable representative of the individual's level of education (1-12 grade, 13+ college).
+* `Hx.of.Violence`: categorical variable representative of whether the individual has a history of violence (No-0, Yes-1).
+* `Disorderly.Conduct`: categorical variable representative of whether the individual has a record of disorderly conduct (No-0, Yes-1).
+* `Suicide`: categorical variable representative of whether the individual has attempted suicide in the past (No-0, Yes-1).
+* `Abuse`: categorical variable representative of whether the individual has a history of abuse (No-0, Physical (P)-1, Sexual (S)-2, Emotional (E)-3, P&S-4, P&E-5, S&E-6, P&S&E-7).
+* `Non.subst.Dx`: categorical variable representative of whether the individual has a non-substance diagonosis (0 – none; 1 – one; 2 – More than one).
+* `Subst.Dx`: categorical variable representative of whether the individual has a substance diagonosis (0 – none; 1 – one Substance-related; 2 – two; 3 – three or more).
+* `Psych.meds.`: categorical variable representative of whether the individual has been prescribed psychiatric medication (0 – none; 1 – one psychotropic med; 2 – more than one psychotropic med).
+
+The resulting dataframe (and variables) are shown above and at this point we're prepared to more deeply explore our **genl** dataset.
+
+To do so, we utilize the built-in summary() and glimpse() functions:
+
+```{r}
+summary(genl)
+glimpse(genl)
+```
+
+From the above outputs we can extend that:
+
+* the average `Age` of respondents is ~40, there are slightly more male than female respondents, and the average education level ~12 (finishing high school).
+* the average `ADHD,Total` was ~34, the average `MD.TOTAL` was ~10, and the averge `SUB.Total` was ~4.
+* `Disorderly.Conduct` appears to be more common than `Hx.of.Violence` which in turn is more common than `Court.order`.
+* approximately 1/3 of respondents have attempted `Suicide` and some form of abuse appears to be common (ie. Physical).
+* the average `Non.subst.Dx`  was ~0.4 while the average `Subst.Dx` was ~1.1 giving the impression that we're dealing with more substance diagnoses that non-substance diagnoses.
+* `Psych.meds` is missing the majority of its values and NA values will have to be accounted for (in general).
+
+Based on this information, we drop `Psych.meds`, drop remaining NA values, and observe the affect on our dataset:
+
+```{r}
+genl <- genl[c(-15)] #drop Psych.meds
+genl <- genl %>% tibble() %>% drop_na() #drop NA values
+#revisit genl
+dim(genl) #175 - 142 = 33 dropped rows
+colSums(is.na(genl)) #verify no NAs
+
+#save dataset for Q3 (in case of "tampering" during Q1, Q2):
+q3_data <- genl
+```
+
+Our dataset has been reduced from 175 observations x 15 variables to 142 observations x 14 variables and from numerous NA values across multiple variables to no NA values.
+
+With NA values dealt with, we ensure each variable's of the proper type and then visualize our variable distributions based on whether they're categorical or numeric: 
+
+```{r}
+#convert features to factor
+genl$Sex <- as.factor(genl$Sex)
+genl$Race <- as.factor(genl$Race)
+genl$Court.order <- as.factor(genl$Court.order)
+genl$Education <- as.factor(genl$Education)
+genl$Hx.of.Violence <- as.factor(genl$Hx.of.Violence)
+genl$Disorderly.Conduct <- as.factor(genl$Disorderly.Conduct)
+genl$Suicide <- as.factor(genl$Suicide)
+genl$Abuse <- as.factor(genl$Abuse)
+genl$Non.subst.Dx <- as.factor(genl$Non.subst.Dx)
+genl$Subst.Dx <- as.factor(genl$Subst.Dx)
+
+#convert features to numeric
+genl$Age <- as.numeric(genl$Age)
+genl$ADHD.Total <- as.numeric(genl$ADHD.Total)
+genl$MD.TOTAL <- as.numeric(genl$MD.TOTAL)
+genl$SUB.Total <- as.numeric(genl$SUB.Total)
+#head(genl) #verify conversions
+
+#visualize categorical distributions as a table
+fig1 <- inspectdf::inspect_imb(genl)
+fig1
+```
+
+From the categorical variable table above we see that ~92% of respondent's cases were not court ordered, ~74% of respondents do not have a history of violence, ~70% of respondents have a history of disorderly conduct, ~68% of respondents have not attempted suicide, ~65% of respondents do not have a non-substance diagnosis, ~63% of respondents do not have a history of abuse, ~56% of respondents are African American, ~54% of respondents are male, ~39% of respondents have completed *at least* high school, and ~39% of respondents have one substance related diagnosis. *The fact that `Education` and `Subst.Dx` have the same pcnt values is interesting and worth noting.*
+
+Moving on to our numeric distributions:
+
+```{r}
+#visualize numeric distributions 
+fig2 <- inspectdf::inspect_num(genl) %>% 
+    show_plot()
+fig2
+
+```
+
+From the histograms above we see that:
+
+* `ADHD.Total` has a left skewed normal distribution with a peak ~45.
+* `Age` appears to be multimodal with peaks ~25, ~35 and ~50.
+* `MD.TOTAL` has a non-normal distribution with a peak concentrated > 15 (at the far right).
+* `SUB.Total` appears to have a multi-modal distribution with its largest peak at ~3.
+
+With insight gained via variable distributions, we move on to observing the pair plot and correlation matrix for numeric variables:
+
+```{r}
+#paired plot of numeric variables
+pairs(genl %>% select_if(is.numeric))
+
+#Correlation matrix for numeric variables
+genl_corr <- genl %>%
+    select_if(is.numeric) %>%
+    cor()
+corrplot(genl_corr, title="Numeric Variable Correlation",type = "lower", mar=c(0,0,1,0))
+```
+
+The pair plot and correlation matrix highlight the fact that `ADHD.Total` and `MD.TOTAL` appear to have strong correlation. We'll note this fact, while carrying both variables forward.
+
+
+................................................................................
+
+# 1. Clustering
+
+We elected to utilize **hierarchical clustering** being that it's more adaptive than k-means clustering. For k-means clustering, we have to pre-define our k. Whereas for hierarchical clustering both the value of k and the location of our centroids (mid-point between all data points in the group) is determined as a part of the process.
+
+We proceed by computing the distances between all data points (using Euclidean distance), clustering based on `distances` based on centroid distance *and* the variance in each cluster, and then plotting the corresponding dendrogram:
+
+```{r}
+set.seed(123)
+#compute distances between all data points (using euclidean distance)
+distances <- dist(genl, method = 'euclidean')
+#cluster based on distances using centroid distance as well as variance in clusters
+clusterHealth <- hclust(distances, method = 'ward.D') #ward.D accounts for centroid distance + variance
+#plot the dendrogram
+plot(clusterHealth)
+```
+
+Based on our dendrogram, it appears that the ideal number of clusters is either 3, 4, or 5. **We proceed with 5 clusters** being that it's the higher of the three and we'd like to better represent the variation we observed during our exploratory data analysis. We want to better capture the distinct characteristics of our clustered groups.
+
+We "cut the tree" and demarcate our groups based on the desired number of clusters, calculate each numeric variables' mean value for each cluster, and then output the resulting table:
+
+```{r}
+clusterGroups <- cutree(clusterHealth, 5)
+#clusterGroups #verify the breakdown per observation
+#Mean value for numeric variables
+#tapply(genl$Age, clusterGroups, mean, simplify=TRUE) #avg age for each cluster
+#tapply(genl$ADHD.Total, clusterGroups, mean) #avg ADHD score for each cluster
+#tapply(genl$MD.TOTAL, clusterGroups, mean) #avg MD score for each cluster
+#tapply(genl$SUB.Total, clusterGroups, mean) #avg SUB score for each cluster
+#Extract corresponding values (to place in easy to understand form):
+avg_age <- c(27.06, 48.95, 41.42, 47.4, 25.22)
+avg_adhd <- c(49.34, 53.52, 34.12, 15.93, 6.56)
+avg_md <- c(12.84, 12.71, 10.58, 7.27, 4.11)
+avg_sub <- c(4.13, 3.28, 4.1, 4.17, 3.44)
+#Build kable table
+group_names <- c("Group 1", "Group 2", "Group 3", "Group 4", "Group 5")
+df <- data.frame(group_names, avg_age, avg_adhd, avg_md, avg_sub)
+df %>% 
+    kbl() %>%
+    kable_styling(latex_options = "striped")
+```
+
+Based on the output above we'd profile our groups as follows:
+
+* Group 1: **Young and Distressed**. This is the 2nd youngest group (late 20s) with the 2nd highest incidence of ADHD and the highest incidence of mental disorder.
+* Group 2: **Old and Unfocused**. This is the oldest group (late 40s) with the highest incidence of ADHD and the 2nd highest incidence of mental disorder.
+* Group 3: **Mid Age and Mid Tiered**. This group is "middle of the run". They're toward their middle years (early 40s), and have moderate incidence of ADHD and mental disorder.
+* Group 4: **Old and Stable**. This is the 2nd most stable group. They're in their  late 40s and have low incidence of ADHD and mental disorder.
+* Group 5: **Young and Driven**. To contrast the **Young and Distressed** group, this group is young and stable. This is the most stable group. They're in their mid 20s and have the lowest incidence of ADHD and mental disorder.
+
+It was interesting to profile our groups and observe that there appeared to be 2 tiers in the earlier and later years. It was also interesting to see that all groups had a relatively low incidence of substance use / dependency. Due to its apparent low impact as a differentiating factor for our clusters it was not discussed.
+
+## Clustering: K-means
+
+In the Appendix, we've also provided code (with a more succinct write up) for our application of K-means clustering analysis to the  `genl` (general) dataset.
+
+................................................................................
+
+# 2. Principal Component Analysis
+
+Principal Component Analysis (PCA) is a way of reducing the dimensions of a given dataset by extracting new features from the original features present in the dataset. The “new” variables after PCA are all independent of one another. We elected to perform Principal Component Analysis on the ADHD self-report columns, MD (mood disorder) questionnaire, and entire dataset.
+
+## ADHD
+
+We start with the Attention Deficit Hyperactivity Disorder (ADHD) symptom variables. During EDA, we'd subset datasets based on question type and thus we proceed with the `adhd` dataset.
+
+There are 19 variables in the `adhd` dataset, 18 pertaining to self-reported ADHD question responses and 1 the total score for that row. All ADHD questions capture categorical responses: never-0, rarely-1, sometimes-2, often-3, and very often-4 whereas the `ADHD.Total` is a quantitative (sum) variable representative of the individual's total self-report score for ADHD scale.
+
+We verify that our data does not have missing values:
+
+```{r}
+# Check for NAs
+colSums(is.na(adhd))
+
+```
+
+Missing values would disturb the implementation of PCA (where we'd have to drop / impute corresponding values), and we confirm that our data has 0 missing values across all variables.
+
+We then perform PCA via **pcrcomp()** function and review corresponding statistics: 
+
+```{r}
+# Perform PCA and review summary statistics
+pca_adhd <- prcomp(adhd, scale. = TRUE)
+summary(pca_adhd)
+
+```
+
+From the `Importance of components`, we can interpret:
+
+* `Standard deviation` as a measure of variability across a single component (ie. deviation of data within `PC1`)
+* `Proportion of Variance` as a measure of the component's variability / representative capability for the entire dataset (ie. the sum of the `Proportion of Variance` row = 1.00).
+* `Cumulative Proportion` as a measure of the cumulative variability represented by principal components up until the component column we're on.
+
+From these definitions we can extend that the first 3 components (`PC1`, `PC2`, and `PC3`) represent ~ 66.7% of the data and remaining components add but minor increments to our representative capability (all the way until `PC19`).
+
+Next, we visit the scree plot:
+
+```{r}
+# scree plot
+plot(pca_adhd, type = 'l', col = 'blue')
+```
+
+If we recall from statistics: $var = sd^2$, where $var$ represents variance and $sd$ represents standard deviation.
+
+From the scree plot above, we confirm our earlier finding that **PC1, PC2, and PC3 appear to be enough to represent our larger dataset.**
+
+### Correlation between variables and principal components:
+
+To explore how our variables (original and PCA) relate to one another, we bind `PC1`, `PC2`, and `PC3` to our original `adhd` dataset, calculate variable correlation and output the result as a table:
+
+```{r}
+# combine datasets
+adhd_df2 <- cbind(adhd, pca_adhd$x)
+# %>% column_spec(which(ADHD_df_2[,19] > 0.69) , color = 'white', background = 'maroon')
+
+# cor plot
+cor(adhd, adhd_df2[, 20:22]) %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down") 
+
+```
+
+From the correlation table we can extend that:
+
+* All variables have a strong positive correlation with `PC1` *and* it appears that `PC1` is identical to `ADHD.Total` based on their correlation of ~1.00.
+* Q1: Q5, Q7, Q8, and Q11 have a negative correlation, Q9, Q10, and Q13 have a *slight* negative correlation, Q12, Q15:Q18 have a positive correlation, and Q6, Q14, and `ADHD.Total` have a *slight* positive correlation with `PC2`.
+* Q1:Q4, Q8, Q10, Q12, Q16:Q18 have a positive correlation, Q7, Q9, and Q15 have a *slight* positive correlation, Q5, Q6, Q11, Q13 and Q14 have a negative correlation, and `ADHD.Total` has a *slight* negative correlation with with `PC3`.
+
+The correlations above provide indication as to the makeup of our principal components. Those with a stronger positive correlation are more a component while those with a stronger negative correlation are less a component.
+
+From our correlation table, we move on to the corresponding biplot.
+
+### Bi-plots
+
+When our first two PCs explain a significant portion of the variance in our data (which is the case for our application), we can make use of a bi-plot. 
+
+A bi-plot overlays the scores plot, a projection of observations onto the span of the first two PCs, and a loadings plot, a projection of the variable vectors onto the span of the PCs, in a single graphic:
+
+```{r, fig.height=10, fig.width=10}
+# Bi-plot of PC1 and PC2
+biplot(pca_adhd, choices = c(1,2), scale = 0)
+```
+
+Points are projected observations while vectors are projected variables. In the above plot, the red arrows represent the eigenvectors of each variable helping us to interpret the relationship between principal components while the numbers in black represent our observations. 
+
+With regard to reading the plot, the left and bottom axes are used to read PCA scores (of the dots) while the top and right axes are used to read how strongly each vector influences the PC.
+
+From the above biplot, we can extend that:
+* the observations appear to play a larger role in the makeup of `PC1` than that of `PC2`,
+* `ADHD.Tot` has the most weight for `PC1` and 
+* Q15:Q18 carry a lot of positive weight while Q2:Q4 carry negative weight for `PC2` 
+
+Next, we move on to the bi-plot for PC2 and PC3:
+
+```{r, fig.height=10, fig.width=10}
+# Bi-plot of PC2 and PC3
+biplot(pca_adhd, choices = c(2,3), scale = 0)
+```
+
+From the `PC2`-`PC3` biplot we can extend that:
+
+* the observations follow a relatively consistent spread with some observations playing a larger role in `PC2` vs. `PC3` (ie. 60) while others play a larger role in `PC3` vs. `PC2` (ie. 144),
+* Q1 carries the most positive weight for `PC2` and 
+* Q13 carries a lot of negative weight while Q1 carries a lot of positive weight for `PC3`
+
+Finally, we explore the bi-plot for PC1 and PC3:
+
+```{r, fig.height=10, fig.width=10}
+# Bi-plot of PC1 and PC3
+biplot(pca_adhd, choices = c(1,3), scale = 0)
+```
+
+The `PC1`-`PC3` bi-plot has a similar layout to our first:
+
+* the observations appear to play a larger role in the makeup of `PC1` than that of `PC2`,
+* `ADHD.Tot` has a lot of weight for `PC1` and 
+* Q1 and Q2 carry a lot of positive weight while Q5, Q6, Q13, and Q14 carry a lot of negative weight for `PC2`.
+
+These plots are useful, but as a possible improvement we'll explore varimax. 
+
+### Varimax rotation
+
+Varimax rotation is used to simplify the expression of a particular sub-space. Coordinates remain unchanged while the sum of squared loadings are maximized.
+
+We apply the **varimax()** function to the rotation variable of our principal components and plot the correlation of corresponding loadings: 
+
+```{r}
+# apply varimax 
+var_adhd <- varimax(pca_adhd$rotation)
+var_adhd$loadings
+#var_adhd$loadings #corrplot is more succinct, easier to interpret
+
+corrplot(var_adhd$loadings[,1:3], is.corr = FALSE)
+```
+
+We elect to interpret the correlation plot (over the loadings output) due to its clarity and succinctness. From the above output, we can see that:
+
+* `PC1` is strongly (negatively) correlated with `ADHD.Q18`,
+* `PC2` is strongly (negatively) correlated with `ADHD.Q16`, and 
+* `PC3` is strongly (positively) correlated with `ADHD.Q5`
+
+Although the results conflict with our earlier plot interpretations, one cannot argue with the simplicity of concise code. Varimax provided in 2 lines of code what it took multiple plots, iterations, and interpretations to come to when referring to biplots: the strongest correlate for each principal component.
+
+## PCA: MD and general
+
+In the Appendix, we've also provided code (with a more succinct write up) for our application of principal component analysis to the `md` (mood disorder) and `genl` (general) datasets.
+
+................................................................................
+
+
+# 3. Support Vector Machine
+
+A Support Vector Machine (SVM) is a supervised machine learning algorithm that creates a hyperplane / decision boundary based on labeled data. *Support vectors* are the data points closest to the hyperplane, that influence the hyperplane’s location and orientation. Using support vectors, we maximize the margin, the space between prospective classes, by ensuring that our classifier is equidistant from the closest observation in each class. 
+
+By use of support vectors our SVM is capable of finding the optimal decision boundary to distinctly classify our data. In our case, we're going to model suicide attempts from the `genl` dataset with a radial and a linear decision boundary. We'll then interpret the performance of each model side-by-side.
+
+To start, we re-familiarize ourselves with the data at hand and our dependent variable (`Suicide`):
+
+```{r}
+#Ensure it's the data of interest:
+genl <- q3_data
+
+#Refamiliarize ourselves with the genl dataset:
+dim(genl) #175 - 142 = 33 dropped rows
+head(genl)
+
+#Visualize suicide attempt counts:
+as.data.frame(table(genl$Suicide))
+
+```
+
+We're dealing with 142 observations x 14 variables - 10 of type factors, 4 of type double, and a dependent variable `Suicide` where 97/142 (68.3%) of patients have not attempted suicide and 45/142 (31.7%) of patients have.
+
+### Feature Exclusion
+
+We'll narrow our dataset further by exploring our independent variable's correlation with `Suicide`, with one another, and then verify our assumptions with the **Boruta** function for feature ranking and selection.
+
+We start by measuring the strength of correlation to `Suicide` for independent variables:
+
+```{r}
+#Compute proportion of missing data per variable
+v <- colnames(genl)
+incomplete <- function(x) sum(!complete.cases(x)) / 142
+Missing_Data <- sapply(genl[v], incomplete) 
+#head(missing) #verify
+
+#Compute correlation between each variable and Suicide
+target_corr <- function(x, y) cor(y, x, use = "na.or.complete")
+Suicide_Correlation <- sapply(genl[v], target_corr, y=genl$Suicide) 
+#head(c_target) #verify
+
+#Bind and output Missing Data and Correlation with Target
+MDCS <- data.frame(cbind(Missing_Data, Suicide_Correlation))
+MDCS %>%
+  kbl(caption = "Proportion of Missing Data vs. Correlation with Suicide") %>%
+  kable_minimal()
+
+```
+
+From the above table we can extend that:
+
+* none of the variables in our set have missing values,
+* `Age`, `Disorderly.Conduct`, and `Non.subst.Dx` have a *weak* correlation with `Suicide`
+* `Abuse`, `MD.Total`, and `Subst.Dx` have the strongest correlation with `Suicide`,
+* remaining variables have a low-to-moderate correlation with `Suicide`.
+
+From this, we can see the 3 variables we may keep as well as those we may drop. For the remaining variables, we'll explore further to guide our decision.
+
+We measure the correlation between variables to observe multicollinearity:
+
+```{r}
+
+#Utilize custom-built correlation matrix generation function
+plot_corr_matrix(genl, 0.3)
+
+```
+
+**Multicollinearity is a concern** and that we may eliminate a larger portion of variables as a result. We'll proceed with only variables with strong predictive promise and / or unique value added.
+
+Based on these guidelines, it appears that we should proceed with at least `Abuse`, `MD.Total`, `Subst.Dx`, whereas variables `Sex`, `Court.order`, and `Hx.of.Violence` we'll decide after consulting the **Boruta** output.
+
+To address weak target correlation and multicollinearity we consider the exclusion of 7-10 variables : `Age`, `Race`, `Education`, `Disorderly.Conduct`, and `Non.subst.Dx` due to weak correlation with the target variable, `ADHD.Total` and `SUB.Total` due to multicollinearity, and `Sex`, `Court.order`, and `Hx.of.Violence` we'll decide after consulting our **Boruta** output.
+
+Before doing so, we utilize the **Boruta** function for feature ranking and selection:
+
+```{r, echo = F, eval = T, fig.height = 8, fig.width = 10}
+# Perform Boruta search
+boruta_output <- Boruta(Suicide ~ ., data=genl, doTrace=0, maxRuns = 1000)
+
+#Get significant variables including tentatives
+boruta_signif <- getSelectedAttributes(boruta_output, withTentative = TRUE)
+#print(boruta_signif)
+
+# Plot variable importance
+plot(boruta_output, cex.axis=.7, las=2, xlab="", main="Variable Importance")
+
+```
+
+From the above plot, we see that only two variables (`Abuse` and `MD.TOTAL`) carry much importance when we consider `Suicide` but in order to offer a more comprehensive representation, we'll also include the next 3 variables (`Race`, `Subst.Dx`, and `Court.order`). *It's worth noting that all variables score relatively low in feature importance which may be an early indication of difficulty in predicting `Suicide`.*
+
+We select the 5 features noted above, convert categorical features to type factor and then verify the dataset that we're proceeding to SVM model-building with:
+
+```{r, echo=F, eval=T}
+#head(genl)
+#Feature selection (address weak target correlation and multicollinearity)
+select_df <- genl[, c(3,5,7,11,12,14)]
+
+#Convert categorical variables to factor
+select_df$Suicide <- as.factor(select_df$Suicide)
+select_df$Race <- as.factor(select_df$Race)
+select_df$Court.order <- as.factor(select_df$Court.order)
+select_df$Subst.Dx <- as.factor(select_df$Subst.Dx)
+select_df$Abuse <- as.factor(select_df$Abuse)
+
+#Verify new dataset
+head(select_df)
+
+```
+
+We observe 5 independent variables (1 numeric, 4 factor) and find that our data is of the proper form aside from the fact that we have numerous independent variables of type factor that we may have to convert to "one hot" dummie variables (ie. unique variables for each level of the factor variable where a 1 is present).
+
+### Model Building & Selection
+
+We proceed to train-test split our data (for later assessment), convert categorical variables into "one hot" dummie variables, train our model, and consult the summary statistics:
+
+```{r, echo=FALSE, eval=TRUE}
+
+#Set set (replicability)
+set.seed(123)
+
+#Perform train-test Split
+train_split <- initial_split(select_df, prop = 0.75)
+training <- training(train_split)
+test <- testing(train_split)
+results <- test$Suicide #hold actual test values for later comparison
+test$Suicide <- NA #set initial test values to NA, to then be predicted
+
+#Convert categorical variables into dummie variables (one hot or dummyvars)
+dummies <- dummyVars(~ ., data=training[,-4]) #Omit col 4 (Suicide) from dummy var generation
+d_train <- as.data.frame(predict(dummies, training[,-4]))
+d_train$Suicide <- training$Suicide
+
+dummies <- dummyVars(~ ., data=test[,-4])
+d_test <- as.data.frame(predict(dummies, test[,-4]))
+d_test$Suicide <- test$Suicide
+
+#head(d_train) #verify dummie variables
+
+
+#Set gamma list and use variable cost to determine optimal model parameters (for SVM modeling)
+gammalist <- c(0.005,0.01,0.015,0.02,0.025,0.03,0.035,0.04,0.045,0.05)
+
+#1st SVM application: radial kernel
+svm_radial <- tune.svm(Suicide ~., data=d_train, kernel='radial', cost=2^(-1:5), gamma = gammalist)
+# summary(svm_radial)
+# summary(svm_radial$best.model)
+svm1 <- predict(svm_radial$best.model, d_test[,-20])
+#confusionMatrix(svm1, results)
+
+#2nd SVM application: linear kernel
+svm_linear <- tune.svm(Suicide ~., data=d_train, kernel='linear', cost=1, gamma = 0.005)
+# summary(svm_linear)
+# summary(svm_linear$best.model)
+svm2 <- predict(svm_linear$best.model, d_test[,-20])
+#confusionMatrix(svm2, results)
+
+
+#Convert performance statistics to tabular form (for output / interpretation):
+AccuracySVM1 <- confusionMatrix(svm1, results)$overall['Accuracy']
+AccuracySVM2 <- confusionMatrix(svm2, results)$overall['Accuracy']
+
+SVM_Model_1 <- confusionMatrix(svm1, results)$byClass
+SVM_Model_1 <- data.frame(SVM_Model_1)
+SVM_Model_1 <- rbind("Accuracy" = AccuracySVM1, SVM_Model_1)
+
+SVM_Model_2 <- confusionMatrix(svm2, results)$byClass
+SVM_Model_2 <- data.frame(SVM_Model_2)
+SVM_Model_2 <- rbind("Accuracy" = AccuracySVM2, SVM_Model_2)
+
+tabularview <- data.frame(SVM_Model_1, SVM_Model_2)
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+
+```
+
+The models share the same Accuracy and Prevalence, whereas `SVM_Model_1` (radial) outperformed `SVM_Model_2` (linear) in Specificity, Pos Pred Value, Neg Pred Value, Precision, and Balanced Accuracy while `SVM_Model_2` (linear) outperformed `SVM_Model_1` (radial) for Sensitivity, Recall, F1, Detection Rate, and Detection Prevalence. The performance was rather close but being that we're dealing with an imbalanced set (97/142 (68.3%) of patients have not attempted suicide), we use the Balanced Accuracy as our deciding factor and elect `SVM_Model_1` (radial).
+
+## SVM: MD and general
+
+In the Appendix, we've also provided code (with a more succinct write up) for our application of support vector machines to the entire dataset (~86% Accuracy) and our principal components ~74% Accuracy).
+
+### Analysis
+
+It was nice to learn via application the effect of kernel selection. For a simpler model and one we believe is likely to be linearly separable, it may be best to start with a linear kernel, whereas when the data appears to be non-linear (which we believed to be the case here), we can start with a non-linear application and then compare back to a linear model to test our assumptions. In this case the radial kernel model did not perform leaps-and-bounds better than the linear kernel model but it did outperform it when we considered the fact that we were dealing with unbalanced data.
+
+It appears that both models were able to *relatively* accurately predict suicide for those who had attempted suicide in the past but each had a difficult time predicting non-suicidal patients. If the model were advanced further, this might be a case where accurately predicting positive (suicide) and remediating the situation (ie. providing help to the patient) could supercede the model's inability to predict non-suicide but this is a very sensitive topic and the model would absolutely have to best tested to a much deeper degree and brought to a much higher level of accuracy to even consider such an idea.
+
+In general though, we were surprised by the low accuracy of our SVM models provided the "clout" surrounding Support Vector Machines and their ability to accurately predict. The reason for a lower performance may have been because the null values we'd dropped (maybe there was valuable data therein), the variables we elected to focus upon, the way in which we applied the models, the nature of the data itself, or the simple fact that it's difficult to predict something like suicide because humans are creatures of nuance and with that comes a great level of unpredictability. 
+
+**We later confirmed, with code included in the Appendix, that Accuracy could be improved via inclusion of stronger (ie. principal components) or more features (ie. the entire dataset).**
+
+
+................................................................................
+
+# References
+
+In completing this assignment, reference was made to the following:
+
+* MIT OpenCourseWare. (2018). **An Introduction to Clustering - Video 7: Hierarchical Clustering in R** [video]. Retrieved from: https://www.youtube.com/watch?v=GPOUGpF-Sno [hierarchical clustering]
+* Bio Turing. (2018). **How to read PCA biplots and scree plots** [article]. Retrieved from: https://blog.bioturing.com/2018/06/18/how-to-read-pca-biplots-and-scree-plots/
+* Xi Cheng. (2020). **Preprocessing of categorical predictors in SVM, KNN, and KDC** [article]. Retrieved from: https://stats.libretexts.org/Bookshelves/Computing_and_Modeling/RTG%3A_Classification_Methods/4%3A_Numerical_Experiments_and_Real_Data_Analysis/Preprocessing_of_categorical_predictors_in_SVM%2C_KNN_and_KDC_(contributed_by_Xi_Cheng)
+* **Optimal Number of Clusters** [article]. Retrived from: https://www.datanovia.com/en/lessons/determining-the-optimal-number-of-clusters-3-must-know-methods/ 
+................................................................................
+
+
+# Appendix
+
+## Mood Disorder PCA
+
+There are columns 15 columns for MD. we will follow the same process that we used for ADHD. 
+
+```{r}
+MD_df <- data %>% select(24:38)
+head(MD_df)
+# check for NAs
+colSums(is.na(MD_df))
+```
+
+Above summary we see no NAs available in the `MD_df` dataset.
+
+In MD.Q3 column scale is different than other columns, so to avoid scale factor set scale = True.
+
+```{r}
+# Compute principal component analysis.
+pca_md <- prcomp(MD_df, scale = TRUE)
+summary(pca_md)
+```
+
+From pca summary, PC1 shows 37% variance in the data, PC2 shows 50% variance in the data, PC3 shows 56% variance in the data and so on.
+
+Plot the scree plot to disply the same, scree plot y-axis is variance nothing but the square of the SD. 
+```{r}
+# scree plot
+plot(pca_md, type = 'l', col = 'blue')
+```
+
+From scree plot PC1, PC2, PC3, and PC4 are describes 62% variance in the data.
+
+From 'https://www.originlab.com/doc/Origin-Help/PrincipleComp-Analysis', found if the relationship is weak between variables, PCA does not work well to reduce data. For MD data more than 3 PC components describe the data, not sure how well PCA will work. 
+
+### Correlation between variables and principal componenets:
+
+Create another dataset use `cbind` with original MD data along with PC1, PC2, PC3, and PC4.
+
+```{r}
+# combine dataset
+md_df_2 <- cbind(MD_df, pca_md$x)
+
+# cor plot
+cor(MD_df, md_df_2[, 16:19]) %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down") 
+```
+
+Above cor table we can see 
+
+* MD.Q1a, MD.Q1g, MD.Q1L,  and MD.Q2 have high negative  correlation with PC1. 
+* MD.Q1g, and MD.Q1c  have positive correlation with PC2 and negative correlation with MD.Q3. 
+* MD.Q1k has positive correlation with PC3 and MD.Q1c has negative correlation with PC3.
+* MD.Q1m and MD.Q1L have negative correlation with PC4.
+
+### Bi-plot and  principal components
+
+In Bi-plot red arrows represent the eigenvectors of each variable. This plot helps us to interpret the relationship between principal components.
+
+```{r, fig.height=10, fig.width=10}
+# Bi-plot of PC1 and PC2
+biplot(pca_md, choices = c(1,2), scale = 0)
+```
+
+From (PC1 and PC2 biplot) observations have low MD.Q3, MD.Q1h
+
+```{r, fig.height=10, fig.width=10}
+# Bi-plot of PC2 and PC3
+biplot(pca_md, choices = c(2,3), scale = 0)
+```
+
+(PC2 and PC3 biplot) 
+
+* MD.Q1m negatively correlate with MD.Q1d. 
+* MD.Q3 negatively correlate with MD.Q1k. 
+* MD.Q1c negative correlate with MD.Q1L.
+
+```{r, fig.height=10, fig.width=10}
+# Bi-plot of PC1 and PC3
+biplot(pca_md, choices = c(3,4), scale = 0)
+```
+
+From (PC1 and PC3 biplot)
+
+* MD.Q1L negative correlate with MD.Q1i.
+* MD.Q1b negative correlate with MD.Q1m.
+
+We need better approach to examine the relationship. 
+
+### Using VARIMAX
+
+```{r}
+# apply varimax 
+var_md <- varimax(pca_md$rotation)
+var_md$loadings
+corrplot(var_md$loadings[,1:4], is.corr = FALSE)
+```
+
+Varimax loading interprets : 
+
+* PC1 negatively co-relate with MD.Q1g 
+* PC2 positively co-relate with MD.Q1i 
+* PC3 positively co-relate with MD.Q1k  
+* PC4 negatively co-relate with MD.Q1m.
+
+### PCA of MD analysis
+
+The PCA of MD shows first principle component have 38% of the variance in the data. To get 90% of the variance, we need to include 11 of the principal components. This reduction reduce features 15 to 11.
+
+
+## General PCA
+
+PCA performs using entire dataset, exclude indivislau ADHD and MD column and take Total.ADHD and MD in to consideration.
+
+Here we are using built-in R function *prccomp()* to perform the *Principal Component Analysis*. 
+
+PCA can be applied only on numerical data. We have few Categorical variables in this dataset that need to be converted to numberical category. 
+
+```{r}
+# Check the data class
+sapply(genl, class)
+```
+As we can see there are only 4 numeric data types and rest are factors. We need to convert all the factors into numeric.
+
+```{r}
+cols.num <- c("Sex","Race","Court.order","Education","Hx.of.Violence", "Disorderly.Conduct", "Suicide","Abuse","Non.subst.Dx","Subst.Dx")
+genl[cols.num] <- sapply(genl[cols.num],as.numeric)
+```
+
+
+```{r}
+# Check to see if all our variables in numeric.
+sapply(genl, class)
+```
+
+```{r}
+# Compute principal component analysis.
+result.pca <- prcomp(genl, scale = TRUE)
+```
+
+Show the percentage of variances explained by each principal component.
+
+```{r}
+# Visualize eigenvalues (scree plot). 
+fviz_eig(result.pca)
+```
+Individuals with a similar profile are grouped together.
+
+```{r}
+# Graph of individuals
+fviz_pca_ind(result.pca,
+             col.ind = "cos2", # Color by the quality of representation
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
+
+Positive correlated variables point to the same side of the plot. Negative correlated variables point to opposite sides of the graph.
+
+```{r}
+# Graph of variables
+fviz_pca_var(result.pca,
+             col.var = "contrib", # Color by contributions to the PC
+             gradient.cols = c("#00AFBB", "#E7B800", "#FC4E07"),
+             repel = TRUE     # Avoid text overlapping
+             )
+```
+```{r}
+# Biplot of individuals and variables
+fviz_pca_biplot(result.pca, repel = TRUE,
+                col.var = "#2E9FDF", # Variables color
+                col.ind = "#696969"  # Individuals color
+                )
+```
+
+### VARIMAX
+
+```{r}
+summary(result.pca)
+var_genl <- varimax(result.pca$rotation)
+corrplot(var_genl$loadings[,1:11], is.corr = FALSE)
+```
+
+PCA of General dataset
+
+The PCA of genl shows first principle component have 19% of the variance in the data. To get 93% of the variance, we need to include 11 of the principal components. This reduction reduce features from 14 to 11.
+
+................................................................................
+
+
+## K-means clustering
+
+In k-means clustering, we first create unnamed/new observations that serve as "centroids", which are then used to compute the Euclidean distance between the centroid and the surrounding observations, which are then used for category assignment. The average of all of the points in each category are then recomputed for the centroid based on this average. Finally, the algorithm is re-run using these new centroids with the process ending when there is no change in centroid position between one run of the clustering algorithm and another.
+
+To perform cluster analysis, first need to select the optimal clusters to do that there are some methods. 
+
+* Elbow method
+* Average silhouette method
+* Gap statistics
+
+We’ll use the following R packages:
+
+`factoextra` to determine the optimal number clusters for a given clustering methods and for data visualization.
+`NbClust` for computing about 30 methods at once, in order to find the optimal number of clusters.
+
+fviz_nbclust below are the parameter description:
+
+* df: numeric matrix or data frame
+* FUNcluster: a partitioning function. Allowed values include kmeans, pam, clara and hcut (for hierarchical clustering).
+* method: the method to be used for determining the optimal number of clusters.
+
+Standadize the data, set mean and standard deviation. 
+
+```{r}
+
+# standadize the data 
+means <- apply(genl,2,mean)
+sds <- apply(genl,2,sd)
+nor = scale(genl,center=means,scale=sds)
+
+# Elbow method
+fviz_nbclust(nor, kmeans, method = "wss") +
+    geom_vline(xintercept = 6, linetype = 2)+
+  labs(subtitle = "Elbow method")
+
+# Silhouette method
+fviz_nbclust(nor, kmeans, method = "silhouette")+
+  labs(subtitle = "Silhouette method")
+
+# Gap statistic
+# nboot = 50 to keep the function speedy. 
+# recommended value: nboot= 500 for your analysis.
+# Use verbose = FALSE to hide computing progression.
+set.seed(140)
+fviz_nbclust(nor, kmeans, nstart = 25,  method = "gap_stat", nboot = 50)+
+  labs(subtitle = "Gap statistic method")
+
+```
+
+* Elbow method: 6 clusters solution suggested
+* Silhouette method: 2 clusters solution suggested
+* Gap statistic method: 5 clusters solution suggested
+
+The disadvantage of elbow and average silhouette methods is that, they measure a global clustering characteristic only. A more sophisticated method is to use the gap statistic which provides a statistical procedure to formalize the elbow/silhouette heuristic in order to estimate the optimal number of clusters.
+
+According to these observations, it’s possible to define k = 5 as the optimal number of clusters in the data.
+
+```{r}
+set.seed(500)
+kmeans_res <- kmeans(nor, 5, nstart = 25)
+kmeans_res
+```
+
+```{r}
+# cluster visualization
+fviz_cluster(kmeans_res, data = genl,
+             ellipse.type = "convex",
+             ggtheme = theme_classic())
+```
+
+
+
+Calculate each numeric variables mean value for each cluster, and then output the resulting table:
+
+```{r}
+aggregate(genl, by=list(cluster=kmeans_res$cluster), mean) %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down") 
+```
+
+Based on the output above we’d profile our groups as follows:
+
+* Cluster 1: Have moderate incidence of ADHD and mental disorder, and less violence.
+* Cluster 2: Have low incidence of ADHD and mental disorder.
+* Cluster 3: Have high incidence of ADHD and low incidence of mental disorder.
+* Cluster 4: Have high incidence of ADHD and moderate incidence of mental disorder.
+* Cluster 5: Have moderate incidence of ADHD and mental disorder, and more violence.
+
+................................................................................
+
+
+## SVM 
+
+Below, we re-visited our dataset with a different approach to compare-contrast the resulting Accuracies. The results were an improvement :)
+
+### EDA
+
+First we need to identify NAs using `vis_miss` from visdat package. Then replace NAs with Mode. 
+
+```{r, fig.width=10, fig.height=5, fig.align='center'}
+visdat::vis_miss(data)
+```
+
+```{r, fig.width=10, fig.height=5, fig.align='center'}
+mode <- function(df, ...) {
+  tb <- table(df)
+  which(tb == max(tb)) %>% sort %>% `[`(., 1) %>% names
+}
+
+impute <- function(df, fun) {
+  fval <- fun(df, na.rm = TRUE)
+  y <- ifelse(is.na(df), fval, df)
+  return(y)
+}
+
+data_all <- data %>% 
+  select(-Initial) %>% 
+  mutate(
+    Alcohol = impute(Alcohol, mode),
+    THC     = impute(THC, mode),
+    Cocaine = impute(Cocaine, mode),
+    Stimulants = impute(Stimulants, mode),
+    Sedative.hypnotics = impute(Sedative.hypnotics, mean),
+    Opioids  = impute(Opioids, mean),
+    Court.order = impute(Court.order, mean),
+    Education = impute(Education, mode),
+    Hx.of.Violence = impute(Hx.of.Violence, mode),
+    Disorderly.Conduct = impute(Disorderly.Conduct, mode),
+    Suicide = impute(Suicide, mode),
+    Abuse = impute(Abuse, mode),
+    Non.subst.Dx = impute(Non.subst.Dx, mode),
+    Subst.Dx = impute(Subst.Dx, mode),
+    Psych.meds. = impute(Psych.meds., mode)
+    ) %>% 
+  mutate_if(is.character, as.numeric)
+
+visdat::vis_miss(data_all)
+
+```
+
+Plot, suicide % over other category such as Age, Sex, Education, Cocaine, Hx.of.Violence, Disorderly.Conduct, Abuse, Non.subst.Dx, Subst.Dx, and  Psych.meds.
+
+```{r}
+p <- data_all %>% select(c('Age','Suicide')) 
+
+setDT(p)[Age <10, agegroup := "0-10"]
+p[Age >=10 & Age <20, agegroup := "10-20"]
+p[Age >=20 & Age <30, agegroup := "20-30"]
+p[Age >=30 & Age <40, agegroup := "30-40"]
+p[Age >=40 & Age <50, agegroup := "40-50"]
+p[Age >=50 & Age <60, agegroup := "50-60"]
+p[Age >=60 & Age <70, agegroup := "60-70"]
+
+PlotXTabs2(p, agegroup, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Age Group")
+```
+
+Agegroup (30-40) committed more suicide and agegroup (40-50) is the second highest.
+
+Age group by suicide commit:
+
+* 10 - 20 - No suicide
+* 20 - 30 - 29%
+* 30 - 40 - 38%
+* 40 - 50 - 30%
+* 50 - 60 - 19%
+* 60 - 70 - No suicide
+
+```{r}
+p <- data_all %>% select(c('Sex','Suicide')) 
+PlotXTabs2(p, Sex, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Sex")
+```
+
+females attempted suicide more than males.
+
+* Female - 37%
+* Male - 21%
+
+```{r}
+p <- data_all %>% select(c('Race','Suicide')) 
+PlotXTabs2(p, Race, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Race")
+```
+
+Suicide committed by Race: 
+
+* Other - 50%
+* White - 39%
+* African American - 20%
+
+```{r, fig.align='center', fig.width=5}
+p <- data_all %>% select(c('Education','Suicide')) 
+PlotXTabs2(p, Education, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by level of Education")
+```
+
+Higher educated less likely committed suicide than others. 
+
+```{r}
+p <- data_all %>% select(c('Hx.of.Violence','Suicide')) 
+PlotXTabs2(p, Hx.of.Violence, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Violence")
+```
+
+Violant people commited more suicide than non-violant. 
+
+```{r}
+p <- data_all %>% select(c('Disorderly.Conduct','Suicide')) 
+PlotXTabs2(p, Disorderly.Conduct, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Disorderly conduct")
+```
+
+This is little surprising, non Disorderly conduct committed more suicide than Disorderly Conduct.
+
+```{r}
+p <- data_all %>% select(c('Abuse','Suicide')) 
+PlotXTabs2(p, Abuse, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Abuse")
+```
+
+Suicide commit by Abuse category:
+
+* Emotional and P&S&E - 75%
+* Sexual - 60%
+* S&E - 50%
+* P&S - 33%
+
+Other abuse category are less. 
+
+```{r}
+p <- data_all %>% select(c('Non.subst.Dx','Suicide')) 
+PlotXTabs2(p, Non.subst.Dx, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Non subst Dx")
+```
+
+Non-substance related Dx : Suicide commit Non-subset Dx one is highest and Non-substance related Dx none is lowest. 
+
+```{r}
+p <- data_all %>% select(c('Subst.Dx','Suicide')) 
+PlotXTabs2(p, Subst.Dx, Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Subst Dx")
+```
+
+Substance related Dx : Suicide commit substance related Dx two and three are highest and substance related Dx one is lowest. 
+
+```{r}
+p <- data_all %>% select(c('Psych.meds.','Suicide')) 
+PlotXTabs2(p, Psych.meds., Suicide, results.subtitle = FALSE, title ="Suicide commit Pecentage by Psych.meds.")
+```
+
+Suicide commit by Psychiatric Meds:
+
+* more than one psychotropic med - 41%
+* one psychotropic med - 25%
+* None - 37%
+
+### SVM Model: entire dataset and PCA output
+
+We will perform SVM with entire dataset. Then, create another SVM model on reduced dimension which performed PCA with `genl` dataset.  Compare the result matrices of these model to find the best one. 
+
+```{r}
+data_all_new <- data_all %>% select(-Suicide, everything())
+
+#Set set (replicability)
+set.seed(700)
+
+#Perform train-test Split
+intrain <- createDataPartition(data_all_new$Suicide, p = 0.75, list = FALSE)
+training_all <- data_all_new[intrain,]
+test_all <- data_all_new[-intrain,]
+results <- test_all$Suicide #hold actual test values for later comparison
+test_all$Suicide <- NA 
+
+
+gammalist <- c(0.005,0.01,0.015,0.02,0.025,0.03,0.035,0.04,0.045,0.05)
+tune.out_radial <- tune.svm(as.factor(Suicide) ~., data=training_all, 
+                 kernel='radial', cost=2^(1:5), gamma = gammalist)
+
+tune.out_linear <- tune.svm(as.factor(Suicide) ~., data=training_all, 
+                 kernel='linear', cost=2^(1:5), gamma = gammalist)
+
+svm3 <- predict(tune.out_radial$best.model, test_all[,-dim(test_all)[2]])
+svm4 <- predict(tune.out_linear$best.model, test_all[,-dim(test_all)[2]])
+
+#Convert performance statistics to tabular form (for output / interpretation):
+AccuracySVM3 <- confusionMatrix(svm3, as.factor(results))$overall['Accuracy']
+AccuracySVM4 <- confusionMatrix(svm4, as.factor(results))$overall['Accuracy']
+
+SVM_Model_3 <- confusionMatrix(svm3, as.factor(results))$byClass
+SVM_Model_3 <- data.frame(SVM_Model_3)
+SVM_Model_3 <- rbind("Accuracy" = AccuracySVM3, SVM_Model_3)
+
+SVM_Model_4 <- confusionMatrix(svm4, as.factor(results))$byClass
+SVM_Model_4 <- data.frame(SVM_Model_4)
+SVM_Model_4 <- rbind("Accuracy" = AccuracySVM4, SVM_Model_4)
+
+tabularview <- data.frame(SVM_Model_3, SVM_Model_4)
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+```
+
+The models share the same Accuracy and Neg Pred Value, whereas  SVM_Model_3 (radial) outperformed SVM_Model_4 (linear) in Sensitivity, Recall, Detection Ratee, F1, and Detection Prevalence while SVM_Model_4 (linear) outperformed SVM_Model_3 (radial) for Specificity, Pos Pred Value, Precision, and Balanced Accuracy. 
+
+### SVM Model: PCA output
+
+From `Varimax` plot we found, to get above 90% variance in data we need to include 11 principal components. We are going to exclude 'ADHD.Total','Non.subst.Dx', 'Subst.Dx', from the dataset.
+
+Split the data in to train and test, apply model, fit the model, predict the model using test data, calculate results matrices to see the model performance. 
+
+```{r}
+genl_2 <- data[c(2:4,23,39)]
+genl_2$SUB.Total <- sub$SUB.Total
+genl_2 <- cbind(genl_2, hstry)
+
+# imputation
+genl_3 <- genl_2 %>% 
+  mutate(
+    SUB.Total = impute(SUB.Total, mode),
+    Court.order = impute(Court.order, mode),
+    Education = impute(Education, mode),
+    Hx.of.Violence = impute(Hx.of.Violence, mode),
+    Disorderly.Conduct = impute(Disorderly.Conduct, mode),
+    Suicide = impute(Suicide, mode),
+    Abuse = impute(Abuse, mode),
+    Non.subst.Dx = impute(Non.subst.Dx, mode),
+    Subst.Dx = impute(Subst.Dx, mode),
+    Psych.meds. = impute(Psych.meds., mode)
+    ) %>% 
+  mutate_if(is.character, as.numeric)
+
+```
+
+```{r}
+genl_svm <- genl_3 %>% select(-c('ADHD.Total', 'Non.subst.Dx', 'Subst.Dx')) %>% select(-Suicide, everything())
+
+#Set set (replicability)
+set.seed(900)
+
+#Perform train-test Split
+intrain <- createDataPartition(genl_svm$Suicide, p = 0.75, list = FALSE)
+training_not_all <- genl_svm[intrain,]
+test_not_all <- genl_svm[-intrain,]
+results_not_all <- test_not_all$Suicide #hold actual test values for later comparison
+test_not_all$Suicide <- NA 
+
+
+gammalist <- c(0.005,0.01,0.015,0.02,0.025,0.03,0.035,0.04,0.045,0.05)
+
+tune.out_radial_5 <- tune.svm(as.factor(Suicide) ~., data=training_not_all, 
+                 kernel='radial', cost=2^(1:5), gamma = gammalist)
+
+tune.out_linear_6 <- tune.svm(as.factor(Suicide) ~., data=training_not_all, 
+                 kernel='linear', cost=2^(1:5), gamma = gammalist)
+
+svm5 <- predict(tune.out_radial_5$best.model, test_not_all[,-dim(test_not_all)[2]])
+svm6 <- predict(tune.out_linear_6$best.model, test_not_all[,-dim(test_not_all)[2]])
+
+#Convert performance statistics to tabular form (for output / interpretation):
+AccuracySVM5 <- confusionMatrix(svm5, as.factor(results_not_all))$overall['Accuracy']
+AccuracySVM6 <- confusionMatrix(svm6, as.factor(results_not_all))$overall['Accuracy']
+
+SVM_Model_5 <- confusionMatrix(svm5, as.factor(results_not_all))$byClass
+SVM_Model_5 <- data.frame(SVM_Model_5)
+SVM_Model_5 <- rbind("Accuracy" = AccuracySVM5, SVM_Model_5)
+
+SVM_Model_6 <- confusionMatrix(svm6, as.factor(results_not_all))$byClass
+SVM_Model_6 <- data.frame(SVM_Model_6)
+SVM_Model_6 <- rbind("Accuracy" = AccuracySVM6, SVM_Model_6)
+
+tabularview <- data.frame(SVM_Model_3, SVM_Model_4, SVM_Model_5, SVM_Model_6)
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+```
+
+We extend the following commentary based on the above output:
+
+* Model 5 (Radial) has high accuracy, Precision, and F1 than Model 6 (linear). 
+* Model 5 works fine with predicting 'no' but have  higher class error in predicting ‘yes’. Similarly, Model 6 correctly predict for 'no' but completely incorrectly predict for 'yes'. Incorrect prediction on 'yes' class may be the cause of Multicollinearity.  
+* Model 3 and Model 4 are the better models than Model 5 and Model 6 aspect of accuracy, Specificity, F1.
+
