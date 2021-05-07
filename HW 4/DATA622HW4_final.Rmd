@@ -828,6 +828,8 @@ The models share the same Accuracy and Prevalence, whereas `SVM_Model_1` (radial
 
 The performance was rather close but being that we're dealing with an imbalanced set (97/142 (68.3%) of patients have not attempted suicide), we use the Balanced Accuracy as our deciding factor and elect `SVM_Model_1` (radial).
 
+#### Confusion matrix for `SVM_Model_1` and `SVM_Model_2`
+
 ```{r}
 confusionMatrix(svm1, results)$table
 confusionMatrix(svm2, results)$table
@@ -835,13 +837,15 @@ confusionMatrix(svm2, results)$table
 
 Both the models `SVM_model_1` and `SVM_model_2` have higher class error in predicting no suicide and less error in predicting suicide.
 
+#### Confusion matrix for `SVM_Model_3`
+
 ```{r}
 confusionMatrix(svm3, results)$table
 ```
 
 The confusion matrix shows `SVM_model_3` is a good model for suicide and non-suicide with accuracy of 74%. The miscallsification happens for suicide is 4 and no suicide 5. There is definately scope to improve the performance of the model. This dataset we did the aggregate of the columns and did not impute NAs, this might be the reason of low accuracy. In the appendix section we perform 6 SVM models (including 3 kernels), one using entire dataset and another using PCA output. 
 
-## SVM: MD and general
+## SVM: Entire dataset and general dataset using PCA output
 
 In the Appendix, we've also provided code (with a more succinct write up) for our application of support vector machines to the entire dataset (~86% Accuracy) and our principal components ~74% Accuracy).
 
@@ -900,6 +904,7 @@ summary(pca_md)
 From pca summary, PC1 shows 37% variance in the data, PC2 shows 50% variance in the data, PC3 shows 56% variance in the data and so on.
 
 Plot the scree plot to disply the same, scree plot y-axis is variance nothing but the square of the SD. 
+
 ```{r}
 # scree plot
 plot(pca_md, type = 'l', col = 'blue')
@@ -1214,17 +1219,23 @@ tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("stri
 
 The models share the same Accuracy and Neg Pred Value, whereas  SVM_Model_4 (radial) outperformed SVM_Model_5 (linear) in Sensitivity, Recall, Detection Ratee, F1, and Detection Prevalence while SVM_Model_5 (linear) outperformed SVM_Model_4 (radial) for Specificity, Pos Pred Value, Precision, and Balanced Accuracy. SVM_Model_6 has same accuracy as SVM_Model_4 but if we look at Neg Pred Value shows NAN, this model is not good fit for suicide. Lets have a look on confusion matrix and interprete how the model works.
 
+#### Confusion matrix for `SVM_Model_4`
+
 ```{r}
 confusionMatrix(svm4, as.factor(results))$table
 ```
 
 This model is performed well in prediction yes and no. Total misclassification is 6. 
 
+#### Confusion matrix for `SVM_Model_5`
+
 ```{r}
 confusionMatrix(svm5, as.factor(results))$table
 ```
 
 This model performed well with suicide class but little poor in no suicide class. Total misclassification is 7. 
+
+#### Confusion matrix for `SVM_Model_6`
 
 ```{r}
 confusionMatrix(svm6, as.factor(results))$table
@@ -1323,11 +1334,15 @@ We extend the following commentary based on the above output:
 
 `SVM_Model_7` and `SVM_Model_9` have high accuracy than `SVM_Model_8`. Lets have a look on confusinon matrix and interpret the results.
 
+#### Confusion matrix for `SVM_Model_7`
+
 ```{r}
 confusionMatrix(svm7, as.factor(results_not_all))$table
 ```
 
 `SVM_Model_7` has accuracy 74%, this model has total 11 misclassification and higher misclassification occures in suicide class. This model predict good for no suicide class but not a good model for suicide class.
+
+#### Confusion matrix for `SVM_Model_8`
 
 ```{r}
 confusionMatrix(svm8, as.factor(results_not_all))$table
@@ -1335,13 +1350,15 @@ confusionMatrix(svm8, as.factor(results_not_all))$table
 
 `SVM_Model_8` has accuracy 67%, this model has total 14 misclassification and completly incorrectly predict for suicide class, we can see all observations for suicide class has predicted incorrectly. This is not a good model to go with. 
 
+#### Confusion matrix for `SVM_Model_9`
+
 ```{r}
 confusionMatrix(svm9, as.factor(results_not_all))$table
 ```
 
 `SVM_Model_9` has same accurcay as `SVM_Model_7`, from confusion matrix we see there are total 11 misclassification and higher misclassification present in suicide class. This model predict 100% accurate for no suicide class but shows poor prediction in suicide class. 
 
-We performed total 9 models using SVM, the genl dataset without PCA gave better result than the PCA model with genl data. But the entire dataset model performed better in comparision to other models. 
+We performed total 9 models using SVM, the genl dataset without PCA gave better result than the PCA model with genl data. But the entire dataset model performed better in comparision to other models. Above all the models, `SVM_Model_4` is the best model. 
 
 
 
