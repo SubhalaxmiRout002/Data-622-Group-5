@@ -40,7 +40,7 @@ library(corrplot) #correlation matrix
 library(Boruta) #Utilize Boruta for feature ranking and selection
 library(gridExtra) #output plots via grid.arrange
 library(car) #outlier handling
-
+library(caTools)
 #Utilize customized functions
 
 plot_corr_matrix <- function(dataframe, significance_threshold){
@@ -496,6 +496,138 @@ round((106+23)/nrow(test),3) #0.838 - LOWER
 
 
 ## Alternative NN Approach (optional)
+
+
+## Logistic Regression 
+
+Logistic Regression is a powerful statistical way of modeling a binomial outcome with one or more explanatory variables. 
+
+For Loan dataset, Loan_status is the Dependent variable and other variables are independent.
+To perform Logistic regression first we check the data is balanced or not. Then split the data in to train and test, fit the model with train data and apply the prediction on test data. 
+We will see the performace matrices for this model, to see ho wthe model is working.
+
+```{r}
+loan_new2 <- loan
+# Convert Credit_History numeric type
+loan_new2$Credit_History <- as.numeric(loan_new2$Credit_History)
+
+# Change Variables values
+loan_new2$Self_Employed <- ifelse(loan_new2$Self_Employed == "Yes", 1, 0)
+loan_new2$Loan_Status <- ifelse(loan_new2$Loan_Status=="Y", 1, 0)
+
+if(loan_new2$Property_Area=="Semiurban"){loan_new2$Property_Area <- 2} else if(loan_new2$Property_Area=="Urban"){loan_new2$Property_Area <- 1} else {
+    loan_new2$Property_Area <- 0}
+
+
+table(loan_new2$Loan_Status)
+```
+
+
+Above table shows the data is not balanced. Data have more Yes than No, so data is not balance, we will do the down sample and apply logistic regression on train dataset. 
+
+```{r}
+# under sample 
+set.seed(1)
+smpl1 <- loan_new2 %>% filter(Loan_Status == 1) %>% sample_n(size = 192)
+smpl2 <- loan_new2 %>% filter(Loan_Status == 0) 
+smpl_192 <- rbind(smpl1, smpl2)
+
+table(smpl_192$Loan_Status)
+```
+
+### LR Model building
+
+Performing an 80-20 split allocates 80% of our data for training the model and 20% of our data for testing it. Use `glm` from stats package to perform logistic regression.
+
+```{r}
+# Data split
+set.seed(5)
+sample = sample.split(smpl_192$Loan_Status, SplitRatio = 0.80)
+
+loan_train = subset(smpl_192, sample == TRUE)
+loan_test = subset(smpl_192, sample == FALSE)
+
+dim(loan_train)
+dim(loan_test)
+
+```
+
+### Binomial Model 1 
+
+This model, includes all the features.
+
+```{r}
+set.seed(6)
+bi_model1 <- glm(Loan_Status ~ ., data = loan_train, family=binomial(link="logit"))
+summary(bi_model1)
+```
+
+From the model we see, AIC : `r bi_model1$aic`. Residual deviance : `r bi_model1$deviance`. Low AIC and residual is better for the model. `Credit_History` is only statistically significant. 
+
+### Confusion Matrix (CM) and accuracy
+
+The confusion matrix avoids "confusion" by measuring the actual and predicted values in a tabular format. Test the model using loan_test.
+
+```{r}
+pred_1 <- predict(bi_model1,loan_test) 
+pred_1 <- if_else(pred_1 > 0.5, 1, 0) 
+
+cm <- table(true = loan_test$Loan_Status, pred_1)
+
+print(cm)
+
+TP <- cm[1]
+FP <- cm[2]
+FN <- cm[3]
+TN <- cm[4]
+
+# accuracy 
+accuracy_bimod1 <- (TP + TN)/(TN + FN + TP + FP)
+paste0("Accuracy : " ,round(accuracy_bimod1 * 100, 2))
+```
+
+The model showing 26 misclassification, The model predicts poor for no suicide class than suicide class. 
+
+The accuracy is not promising, Corelation plot helps to exclude the variable which are co-related to ecah other. From cor plot we see strong relation between TotalIncome and Loan Amount. We consider TotalIncome (due to low p-value) and Credit_History (statistically significant). We build our second LR model with this two variables. 
+
+### Bi-nomial Model 2:
+
+This model includes 2 variables such as TotalIncome and Credit_History.
+
+```{r}
+set.seed(7)
+bi_model2 <- glm(Loan_Status ~ Credit_History + TotalIncome, data = loan_train, family=binomial(link="logit"))
+summary(bi_model2)
+```
+
+From the 2nd model, AIC : `r bi_model2$aic`. <br>
+Residual deviance : `r bi_model2$deviance`.
+
+
+### Confusion Matrix (CM) and accuracy
+
+```{r}
+pred_2 <- predict(bi_model2,loan_test) 
+pred_2 <- if_else(pred_2 > 0.5, 1, 0) 
+
+cm <- table(true = loan_test$Loan_Status, pred_2)
+
+print(cm)
+
+TP <- cm[1]
+FP <- cm[2]
+FN <- cm[3]
+TN <- cm[4]
+
+
+# accuracy 
+accuracy_bimod2 <- (TP + TN)/(TN + FN + TP + FP)
+paste0("Accuracy : " ,round(accuracy_bimod2 * 100, 2))
+```
+
+Accuracy improved from 66% to 70%. The model has 23 misclassification, the model is predict good performance for suicide class. However showing poor performace for no suicide class. 
+
+
 
 ## Model Selection
 
