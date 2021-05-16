@@ -42,7 +42,8 @@ library(gridExtra) #output plots via grid.arrange
 library(car) #outlier handling
 library(caTools)
 library(keras) #alt. NN approach
-
+library(neuralnet) # Normalization 
+require(reshape2) # small multiple density plot
 #Utilize customized functions
 
 plot_corr_matrix <- function(dataframe, significance_threshold){
@@ -237,6 +238,11 @@ With feature importance in mind, we drop the poor predictors from consideration.
 #Subset data based on predictor strength
 loan <- subset(loan, select = -c(1, 2, 3, 4, 7) ) #drop poor predictors
 #head(loan) #verify
+
+
+# created 2 datasets for LR, Neural nets
+loan_new2 <- loan
+loan_nn <- loan
 
 ```
 
@@ -573,6 +579,180 @@ LEFT OFF HERE: please feel free to pick up where I'd left off in the references 
 ```
 
 
+## Neural Networks with normalization
+
+The dataset consist of 6 variables, out of that LoanAmount and TotalIncome are numerical. Others variables are factor and categorical. Implement below changes :
+
+* Self_Employed (Yes/No) <- Yes = 1, No = 0)
+* Credit_History <- data type factor to numeric
+* Property_Area <- Semiurban = 2, Urban = 1, Rural = 0
+* Loan_Status <- data type factor to numeric
+
+To perform Neural nets use package `neuralnet`. First we apply the normalization the on variables to get all the values between 0 and 1. We retain output variable (Loan_Status) as it is because the values are in 0 or 1. 
+
+```{r}
+
+# Convert Credit_History numeric type
+loan_nn$Credit_History <- as.numeric(loan_nn$Credit_History)
+
+# Change Variables values
+loan_nn$Self_Employed <- ifelse(loan_nn$Self_Employed == "Yes", 1, 0)
+loan_nn$Loan_Status <- ifelse(loan_nn$Loan_Status=="Y", 1, 0)
+
+loan_nn$Property_Area <- case_when(
+  loan_nn$Property_Area == "Semiurban" ~ 2,
+  loan_nn$Property_Area == "Urban" ~ 1,
+  loan_nn$Property_Area == "Rural" ~ 0,
+)
+
+# plot small multiples
+ggplot(data = melt(loan_nn), aes(x = value)) +
+stat_density() +
+facet_wrap(~variable, scales = "free")
+
+```
+
+#### Normalization
+
+To apply normalization on each columns, substract the minimum values of the column and devide by maximim - minimum. Plot density of all the variables to see the normalization. The below plot range loes between 0 and 1.
+
+```{r}
+# Min-Max Normalization
+loan_nn$Self_Employed <- (loan_nn$Self_Employed - min(loan_nn$Self_Employed))/(max(loan_nn$Self_Employed) - min(loan_nn$Self_Employed))
+loan_nn$LoanAmount <- (loan_nn$LoanAmount - min(loan_nn$LoanAmount))/(max(loan_nn$LoanAmount) - min(loan_nn$LoanAmount))
+loan_nn$Credit_History <- (loan_nn$Credit_History - min(loan_nn$Credit_History))/(max(loan_nn$Credit_History)-min(loan_nn$Credit_History))
+loan_nn$Property_Area <- (loan_nn$Property_Area - min(loan_nn$Property_Area))/(max(loan_nn$Property_Area)-min(loan_nn$Property_Area))
+loan_nn$TotalIncome <- (loan_nn$TotalIncome - min(loan_nn$TotalIncome))/(max(loan_nn$TotalIncome)-min(loan_nn$TotalIncome))
+
+# plot small multiples
+ggplot(data = melt(loan_nn), aes(x = value)) +
+stat_density() +
+facet_wrap(~variable, scales = "free")
+```
+
+#### Model Building 
+
+Split the data in 80% and 20%, train data having 80% of the data and train data having 20% of the data. Then apply the model on train data.
+
+```{r}
+# Data Partition
+set.seed(11)
+ind <- sample(2, nrow(loan_nn), replace = TRUE, prob = c(0.8, 0.2))
+training_nn <- loan_nn[ind==1,]
+testing_nn <- loan_nn[ind==2,]
+
+dim(training_nn)
+dim(testing_nn)
+```
+Training data : `dim(training_nn)` <br>
+Testing data : `dim(testing_nn)`
+
+Neural Network model apply some parameters, 
+
+* hidden represnts the number of hidden layer, to get the optimal model we can change the number
+* err.fact used for alculation of the error, Alternatively, the strings 'sse' and 'ce' which stand for the sum of squared errors and the cross-entropy can be used.
+* linear.output - logical. If act.fct should not be applied to the output neurons set linear output to TRUE, otherwise to FALSE.
+
+Plot the network and discuss about how it input layer, hidden layer and output layer works. 
+
+```{r}
+# Neural Networks
+library(neuralnet)
+set.seed(13)
+
+n1 <- neuralnet(Loan_Status~Self_Employed+LoanAmount+Credit_History+Property_Area+TotalIncome,
+               data = training_nn,
+               hidden = 1,
+               err.fct = "ce",
+               linear.output = FALSE
+               )
+
+plot(n1)
+```
+
+Node Output Calculations with Sigmoid Activation Function
+
+Above diagram shows first 5 nodes are input node, lets say N1, N2, N3, N4, and N5. The middle layer is hidden layer i.e N6, and last node is output layer i.e N7. To calculate output node need to calculate N6 output, because the output of N6 is input to N7. Similary to calculate N6 ouput, need to calculate N6 input. 
+
+Note, formula for sigmoid is $1/(1+exp(-x))$
+
+Here is the equation: $ f(x)=b+ w1⋅x1+ w2⋅x2 +...+ wn⋅xn$
+
+```{r}
+# first row
+head(training_nn[1,])
+```
+
+```{r} 
+in6 <- 10.47375 + (0*-5.36828) + (0.1432706*2.7186) + (1*-13.27065) + (0.5 * -1.77825) + (0.05539355 * 8.03783)
+out6 <- 1/(1+exp(-in6))
+in7 <- 1.71561 +(-4.21959*out6)
+out7 <- 1/(1+exp(-in7))
+paste0("Node 7 Output : " ,out7)
+output <- compute(n1, training_nn[,-5])
+paste0("First predicted value of NN : ", head(output$net.result, n = 1))
+```
+
+Both predicted values and manual calculate showing same values, we see last some decimal points are not maching due to round off calculation. 
+
+Above explanation shows the neural nets prediction calculation.  
+
+#### Feature Selection 
+
+Feature selection is an important part of most learning algorithms. Feature selection is used to select the most relevant features from the data.A simple method for feature selection using feedforward neural networks is presented. The method starts by using one input neuron and adds one input at time until the wanted classification accuracy has been achieved or all attributes have been chosen. 
+
+From EDA, we found Credit History is the most important feature for Loan approval. So first start with that feature, then add other relevant feature, untill we get the significantly and improves classification accuracy. 
+
+```{r}
+set.seed(12)
+
+n <- neuralnet(Loan_Status ~ Credit_History+Property_Area,
+               data = training_nn,
+               hidden = 1,
+               err.fct = "ce",
+               linear.output = FALSE
+               )
+plot(n)
+```
+
+Lets have look on confusion matrix and accuracy on train and test dataset.  
+
+```{r}
+# Confusion Matrix & Misclassification Error - training data
+output <- compute(n, training_nn[,-5])
+p1 <- output$net.result
+pred1 <- ifelse(p1>0.5, 1, 0)
+tab1 <- table(Prediction =  pred1, Actuals = training_nn$Loan_Status)
+tab1
+paste0("Misclassification Error of training data: ", round(100 - sum(diag(tab1))/sum(tab1)*100,2))
+paste0("Accuracy of training data: ", round(sum(diag(tab1))/sum(tab1) * 100,2))
+```
+
+There are total 91 misclassification based on training data, out of that 6 pople actually commit suicide, model shows they are not commit suicide, and 85 people actually not commit suicide but model shows they commit suicide. This training set model performs better result with suicide class and poor result with no suicide class. 
+
+```{r}
+# Confusion Matrix & Misclassification Error - testing data
+output <- compute(n, testing_nn[,-5])
+p2 <- output$net.result
+pred2 <- ifelse(p2>0.5, 1, 0)
+tab2 <- table(Prediction = pred2, Actual = testing_nn$Loan_Status)
+tab2
+paste0("Misclassification Error of testing data: ", round(100 - sum(diag(tab2))/sum(tab2)*100,2))
+paste0("Accuracy of testing data: ", round(sum(diag(tab2))/sum(tab2)*100,2))
+```
+
+Training data misclassification is `r round(100 - sum(diag(tab1))/sum(tab1)*100,2)`% and testing data misclassification is `r round(sum(diag(tab2))/sum(tab2)*100,2)`%, so neural nets performs some amount of consistency between traing and testing data. This model performs better with suicide class than no suicide i.e model says 1 person actually committed suicide but showing no suicide, and 17 people actually not commite suicide but model shows they commit suicide. With test data, the model performs pretty well with suicide class and model have poor performance with no suicide class. 
+
+Testing data and traing data has same accuracy. There are other parameter we applied and checked for the optimal model. They are: 
+
+* tried with `hidden layer` range 1 to 5, multi layer such as c(3,2), c(2,1), and layer repeation (the parameter rep gets the input of repetation, and model will repeat that many times)
+* `Life sign`:specify how much the function will print during the calculation of the neural network. 'none', 'minimal' or 'full'. Tried with 'full'.
+
+* `algorithm` : contains the algorithm type to calculate the neural network. Tried with 'rprop+' refers to resilient backpropagation with and without weight backtracking.
+
+Current model we find the optimal model out of all other models. 
+
+
 ## Logistic Regression 
 
 Logistic Regression is a powerful statistical way of modeling a binomial outcome with one or more explanatory variables. 
@@ -582,7 +762,7 @@ To perform Logistic regression first we check the data is balanced or not. Then 
 We will see the performace matrices for this model, to see ho wthe model is working.
 
 ```{r}
-loan_new2 <- loan
+
 # Convert Credit_History numeric type
 loan_new2$Credit_History <- as.numeric(loan_new2$Credit_History)
 
@@ -590,11 +770,15 @@ loan_new2$Credit_History <- as.numeric(loan_new2$Credit_History)
 loan_new2$Self_Employed <- ifelse(loan_new2$Self_Employed == "Yes", 1, 0)
 loan_new2$Loan_Status <- ifelse(loan_new2$Loan_Status=="Y", 1, 0)
 
-if(loan_new2$Property_Area=="Semiurban"){loan_new2$Property_Area <- 2} else if(loan_new2$Property_Area=="Urban"){loan_new2$Property_Area <- 1} else {
-    loan_new2$Property_Area <- 0}
-
-
+loan_new2$Property_Area <- case_when(
+  loan_new2$Property_Area == "Semiurban" ~ 2,
+  loan_new2$Property_Area == "Urban" ~ 1,
+  loan_new2$Property_Area == "Rural" ~ 0,
+)
+loan_new2 <- subset(loan_new2, select = c(Self_Employed, LoanAmount, Credit_History, 
+                                          Property_Area, Loan_Status, TotalIncome))
 table(loan_new2$Loan_Status)
+
 ```
 
 
@@ -661,17 +845,17 @@ accuracy_bimod1 <- (TP + TN)/(TN + FN + TP + FP)
 paste0("Accuracy : " ,round(accuracy_bimod1 * 100, 2))
 ```
 
-The model showing 26 misclassification, The model predicts poor for no suicide class than suicide class. 
+The model showing 21 misclassification, The model predicts poor for both suicide class and no suicide class. 
 
-The accuracy is not promising, Corelation plot helps to exclude the variable which are co-related to ecah other. From cor plot we see strong relation between TotalIncome and Loan Amount. We consider TotalIncome (due to low p-value) and Credit_History (statistically significant). We build our second LR model with this two variables. 
+The accuracy is not promising, Corelation plot helps to exclude the variable which are co-related to ecah other. From cor plot we see strong relation between TotalIncome and Loan Amount. We include the variables which are statistically significant. Here Credit_History and Property_Area are statistically significant menas low p-value. We build our second LR model with this two variables. 
 
 ### Bi-nomial Model 2:
 
-This model includes 2 variables such as TotalIncome and Credit_History.
+This model includes 2 variables such as Property_Area and Credit_History.
 
 ```{r}
 set.seed(7)
-bi_model2 <- glm(Loan_Status ~ Credit_History + TotalIncome, data = loan_train, family=binomial(link="logit"))
+bi_model2 <- glm(Loan_Status ~ Credit_History + Property_Area, data = loan_train, family=binomial(link="logit"))
 summary(bi_model2)
 ```
 
@@ -700,8 +884,9 @@ accuracy_bimod2 <- (TP + TN)/(TN + FN + TP + FP)
 paste0("Accuracy : " ,round(accuracy_bimod2 * 100, 2))
 ```
 
-Accuracy improved from 66% to 70%. The model has 23 misclassification, the model is predict good performance for suicide class. However showing poor performace for no suicide class. 
+Accuracy improved from 72% to 74%. The model has 20 misclassification, the model is predicts poor performnace for both suicide and no-suicide class. Out of both the classes no suice class perform better than suicide class. 
 
+ 
 
 
 ## Model Selection
