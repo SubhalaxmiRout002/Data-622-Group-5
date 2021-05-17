@@ -235,15 +235,16 @@ Our utilization of the **Boruta** function for feature ranking and selection ind
 With feature importance in mind, we drop the poor predictors from consideration. Dropping these variables also addresses concerns of applicant discrimination (ie. rejection based on `Gender`) and thus we address two concerns with this act of feature selection.
 
 ```{r, include=F}
+library(data.table)
 #Subset data based on predictor strength
 loan <- subset(loan, select = -c(1, 2, 3, 4, 7) ) #drop poor predictors
 #head(loan) #verify
 
 
-# created 2 datasets for LR, Neural nets
+# created 3 datasets for LR, Neural nets, NN using keras
 loan_new2 <- loan
 loan_nn <- loan
-
+loan_keras <- loan
 ```
 
 ## Independent Variable Distributions
@@ -509,74 +510,213 @@ Being that each of our optimization attempts were fruitless, we next opted to ex
 
 Background / Intro
 
+This model is a densely connected deep neural network with two hidden layers and an output layer. Training a neural network revolves around the following objects:
+
+* Layers, which are combined into a network (or model)
+* The input data and corresponding targets
+* The loss function, which defines the feedback signal used for learning
+* The optimizer, which determines how learning proceeds
+
+This model we use all these steps to build the model using keras. Use `keras` package to make this model. 
+
+Convert all categorical variables to numerical variables. 
+
 ```{r}
 #Preprocess data
-loan <- loan[, c(1, 3, 4, 2, 6, 5)]
-loan.matrix <- as.matrix(loan) #Convert dataframe to matrix
-dimnames(loan.matrix) <- NULL #Set column names to NULL
-#loan.matrix <- normalize(loan.matrix[,1:5]) #normalize data - took too long, would not compile
+loan_keras <-  loan_keras[, c(1, 3, 4, 2, 6, 5)]
 
-#Train-test split
-set.seed(123) #for reproducibility
-indx <- sample(2, 
-              nrow(loan.matrix), 
-              replace=TRUE, 
-              prob=c(0.75, 0.25)) #make index with values 1,2 based on partition proportion
-indx
-#Select only feature variables
-x_train <- loan.matrix[indx==1, 1:5] 
-x_test <-loan.matrix[indx==2, 1:5]
+# Convert Credit_History numeric type
+loan_keras$Credit_History <- as.numeric(loan_keras$Credit_History)
 
-#Process target variable
-y_test_actual <- loan.matrix[indx==2, 6]
+# Change Variables values
+loan_keras$Self_Employed <- ifelse(loan_keras$Self_Employed == "Yes", 1, 0)
+loan_keras$Loan_Status <- ifelse(loan_keras$Loan_Status=="Y", 1, 0)
 
-###LEFT OFF HERE: troubleshoot error below
+loan_keras$Property_Area <- case_when(
+  loan_keras$Property_Area == "Semiurban" ~ 2,
+  loan_keras$Property_Area == "Urban" ~ 1,
+  loan_keras$Property_Area == "Rural" ~ 0,
+)
 
-#One hot encode target variable for training and test datasets
-# y_train <- keras::to_categorical(loan.matrix[indx==1, 6])
-# y_test <- keras::to_categorical(loan.matrix[indx==2, 6])
+#loan_keras <- loan_keras %>% mutate_if(is.factor, as.numeric) # convert factor to numeric
 
+# Neural Network Visualization
+n <- neuralnet(Loan_Status ~ Self_Employed+Credit_History+Property_Area+LoanAmount+TotalIncome,
+               data = loan_keras,
+               hidden = c(4,2),
+               linear.output = F,
+               lifesign = 'full',
+               rep=1)
+
+plot(n,
+     col.hidden = 'darkgreen',
+     col.hidden.synapse = 'darkgreen',
+     show.weights = F,
+     information = F,
+     fill = 'lightblue')
 ```
 
-LEFT OFF HERE: please feel free to pick up where I'd left off in the references below
+The above model has 5 input layers, 2 hidden layers (i.e 4 nurons in one layer and other has 2 neurons). This is connect to the output neuron. We make the dataset to a matrix format, and split in to train and test. 
 
-**Ref**: https://rpubs.com/juanhklopper/deep_neural_network_example
+```{r}
+# Matrix
+loan_keras <- as.matrix(loan_keras)
+dimnames(loan_keras) <- NULL
+```
+
+Split the data in to train and test, train data 80% and test data 20%. Create 4 sets of data i.e training, testing, train traget and test target. Train and test traget contains the ouput variable i.e Loan Status. Training and testing datasets contains all other variables other than output variable.
+
+```{r}
+# Partition
+set.seed(18)
+ind <- sample(2, nrow(loan_keras), replace = T, prob = c(.8, .2))
+training_keras <- loan_keras[ind==1,1:5]
+testing_keras <- loan_keras[ind==2, 1:5]
+trainingtarget <- loan_keras[ind==1, 6]
+testingtarget <- loan_keras[ind==2, 6]
+```
+
+Normalize the values apply mean and standard deviation to the columns. All the values present in between 0 and 1 in training and testing set. 
+
+```{r}
+# Normalize
+m <- colMeans(training_keras)
+s <- apply(training_keras, 2, sd)
+training_keras <- scale(training_keras, center = m, scale = s)
+testing_keras <- scale(testing_keras, center = m, scale = s)
+```
+
+Create the model using `keras_model_sequential`, pass the `layer_dense()`. This function creates the hidden layer in the network. Can apply multiple hidden layer using the same function. For hidden layer activation function is `relu` stands for rectified linear unit, by default the value for activation function is linear. Need to define the input shape, we have 5 input variable so shape is 5. 
 
 ```{r}
 #Create model
-
-# nn_model2 <- keras_model_sequential()
-# 
-# nn_model2 %>% 
-#   layer_dense(name = "DeepLayer1",
-#               units = 10,
-#               activation = "relu",
-#               input_shape = c(5)) %>% 
-#   layer_dense(name = "DeepLayer2",
-#               units = 10,
-#               activation = "relu") %>% 
-#   layer_dense(name = "OutputLayer",
-#               units = 2,
-#               activation = "softmax")
-# 
-# summary(nn_model2)
-
+model_keras <- keras_model_sequential()
+model_keras %>% 
+         layer_dense(units = 4, activation = 'relu', input_shape = c(5)) %>%
+         layer_dense(units = 2, activation = 'relu') %>%
+         layer_dense(units = 1)
 ```
 
 ```{r}
 #Compile model
+model_keras %>% compile(loss = 'mse',
+                  optimizer = optimizer_rmsprop(lr= 0.005),
+                  metrics = c("accuracy"))
+```
+
+For compile the model using loss, optimizer and metrics. There are other arrguments we can pass, but here we choose to pass 3 Arguments. The ouput has 2 values (1,0) and input are all numerical variables. 
+
+* loss = If the model has multiple outputs, you can use a different loss on each output by passing a dictionary or a list of objectives. The loss value that will be minimized by the model will then be the sum of all individual losses. 
+* optimizer = optimizer instance, default is rmsprop(lr stands for learning rate)
+* metrics = List of metrics to be evaluated by the model during training and testing. Here we pass accuracy.
+
+```{r}
+#Fit model
+model_keras_train <- model_keras %>%
+         fit(training_keras,
+             trainingtarget,
+             epochs = 100,
+             batch_size = 32,
+             validation_split = 0.1
+             )
+```
+
+Before fitting the training data (passing the training data to the model), the model requires compilation. The loss function, optimizer, and metrics are specified during this step.
+
+To train model,
+
+* training_keras = Vector, matrix, or array of training data
+* trainingtarget = Vector, matrix, or array of target (label) data
+* epochs = Number of epochs to train the model
+* batch_size = Integer or NULL. Number of samples per gradient update. If unspecified, batch_size will default to 32.
+* validation_split = Fraction of the training data to be used as validation data (between 0 and 1).
+
+The first graph is for loss and 2nd graph is for mean absolute error. Initially there are very less difference between loss and val_loss which is very minimal. This means the training error is low. But after epochs 14 the error is gradually increasing. We see similar pattern in 2nd graph.
+
+Lets have a look on model evaluation. 
+
+```{r}
+#Evaluate model
+model_keras %>% evaluate(testing_keras, testingtarget)
+
+pred_keras <- model_keras %>% predict(testing_keras)
 
 ```
 
-```{r}
-#Fit data
+The test feature and target sets can be used to evaluate the model. The results show the overall loss and mean absolute error by using the evaluate() function. It takes two arguments referencing the feature and target test sets.
 
+
+```{r}
+# Confusion matrix and misclassification 
+pred_keras_1 <- ifelse(pred_keras>0.5, 1, 0)
+
+
+tab4 <- table(Predicted = pred_keras_1,
+      Actual = testingtarget)
+
+tab4
+
+sum(diag(tab4))/sum(tab4)
+```
+
+Accuracy is 78%, model classify loan approve yes category well but shows poor performance for loan approve no category. 
+
+We have used (4:2) neurons and only 2 hidden layer, there are scope for improvement. We will try with multiple neurons and layer dropout that helps to reduce over fitting. 
+
+We apply the same code but with different neurons count and hidden layer. 
+
+
+#### **Fine tune the model**
+
+```{r}
+#Create model
+model_keras_2 <- keras_model_sequential()
+model_keras_2 %>% 
+         layer_dense(units = 100, activation = 'relu', input_shape = c(5)) %>%
+         layer_dropout(rate = 0.4) %>%
+         layer_dense(units = 1)
+```
+
+```{r}
+#Compile model
+model_keras_2 %>% compile(loss = 'mse',
+                  optimizer = optimizer_rmsprop(lr= 0.005),
+                  metrics = c("accuracy"))
+```
+
+```{r}
+#Fit model
+model_keras_train <- model_keras_2 %>%
+         fit(training_keras,
+             trainingtarget,
+             epochs = 100,
+             batch_size = 32,
+             validation_split = 0.2
+             )
 ```
 
 ```{r}
 #Evaluate model
+model_keras_2 %>% evaluate(testing_keras, testingtarget)
+
+pred_keras_2 <- model_keras_2 %>% predict(testing_keras)
+
 
 ```
+
+```{r}
+# Confusion matrix and misclassification 
+pred_keras_2 <- ifelse(pred_keras_2>0.5, 1, 0)
+
+tab5 <- table(Predicted = pred_keras_2,
+      Actual = testingtarget)
+
+tab5
+
+sum(diag(tab5))/sum(tab5)
+```
+
+Accuracy improved 78% to 80%, this model also perform same as first keras model. Better performance with Yes category and poor performance with No category. There are total 22 misclassification. 
 
 
 ## Neural Networks with normalization
