@@ -1074,8 +1074,15 @@ $z_i= \frac {x_i−\bar x}{s_x}$
 
 After scaling, Split the data in 80 - 20 %, train data - 80% and test data - 20%. 
 
+Create 2 datasets for train and test, for actual data and for scaled data. 
+
+Actual data, train set name: train, test : test 
+Scaled data, train set name : training_knn, test : testing_knn
+
+The idea here is, to show the model performance using kNN, using both actual and scaled data. 
+
 ```{r}
-loan_knn <-  loan_knn[, c(1, 3, 4, 2, 6, 5)]
+library(class)
 
 # Convert Credit_History numeric type
 loan_knn$Credit_History <- as.numeric(loan_knn$Credit_History)
@@ -1126,7 +1133,7 @@ k_range <- 1:100
 for (i in k_range) {
   #  Unscaled data
   set.seed(26)
-  train_pred_a <- knn(train, test, trainingtarget_knn, k=i)
+  train_pred_a <- knn(train, train, trainingtarget_knn, k=i)
   train_acc <- c(train_acc, mean(train_pred_a == trainingtarget_knn))
   
   set.seed(26)
@@ -1135,7 +1142,7 @@ for (i in k_range) {
   
   # Standard Scaling
   set.seed(26)
-  train_pred <- knn(training_knn, testing_knn, trainingtarget_knn, k=i)
+  train_pred <- knn(training_knn, training_knn, trainingtarget_knn, k=i)
   train_acc_sc <- c(train_acc_sc, mean(train_pred == trainingtarget_knn))
   
   set.seed(26)
@@ -1181,7 +1188,7 @@ We will now recalculate the training and validation accuracies for this model, g
 
 ```{r}
 set.seed(26)
-train_pred <- knn(train, test, trainingtarget_knn, k=acc)
+train_pred <- knn(train, train, trainingtarget_knn, k=acc)
 train_acc <- mean(train_pred == trainingtarget_knn)
   
 set.seed(26)
@@ -1195,8 +1202,31 @@ tab_knn <-  table(Predicted = valid_pred, Actual = testingtarget_knn)
 tab_knn
 ```
 
-The confusion matrix shows, total 33 misclassification on test data. Model predicts loan approval category Yes class better than No class category. More misclassification occure in No class category.
- 
+**Confusion matrix and model prediction on Scaled data**
+
+The confusion matrix shows, total 33 misclassification on test data. Model predicts loan approval category Yes class better than No class category. More misclassification occure in No class category. 
+
+```{r}
+acc_sc <- which.max(valid_acc_sc)
+acc_sc
+
+set.seed(26)
+train_pred <- knn(training_knn, training_knn, trainingtarget_knn, k=acc_sc)
+train_acc <- mean(train_pred == trainingtarget_knn)
+  
+set.seed(26)
+valid_pred <- knn(training_knn, testing_knn, trainingtarget_knn, k=acc_sc)
+valid_acc <- mean(valid_pred == testingtarget_knn)
+
+cat('Training Accuracy:   ', train_acc, '\n',
+    'Validation Accuracy: ', valid_acc, sep='')
+
+tab_knn_sc <-  table(Predicted = valid_pred, Actual = testingtarget_knn)
+tab_knn_sc
+```
+
+This model has high accuracy, but this is not a good model for predict loan approve No category. This model predict 100% accuract for Yes category, but this is not a recommended model to use. 
+
 ## Model Selection
 
 ## Final Model Discussion / Interpretation
