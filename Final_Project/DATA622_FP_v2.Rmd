@@ -728,7 +728,7 @@ paste0("Misclassification Error of training data: ", round(100 - sum(diag(tab1))
 paste0("Accuracy of training data: ", round(sum(diag(tab1))/sum(tab1) * 100,2))
 ```
 
-There are total 91 misclassification based on training data, out of that 6 pople actually commit suicide, model shows they are not commit suicide, and 85 people actually not commit suicide but model shows they commit suicide. This training set model performs better result with suicide class and poor result with no suicide class. 
+There are total 91 misclassification based on training data, out of that 6 pople actually get loan approval, model shows their loan is not approved, and 85 people actually loan not approved but model shows their loan approved. This training set model performs better result with loan approved class and poor result with no loan approved class. 
 
 ```{r}
 # Confusion Matrix & Misclassification Error - testing data
@@ -741,7 +741,7 @@ paste0("Misclassification Error of testing data: ", round(100 - sum(diag(tab2))/
 paste0("Accuracy of testing data: ", round(sum(diag(tab2))/sum(tab2)*100,2))
 ```
 
-Training data misclassification is `r round(100 - sum(diag(tab1))/sum(tab1)*100,2)`% and testing data misclassification is `r round(sum(diag(tab2))/sum(tab2)*100,2)`%, so neural nets performs some amount of consistency between traing and testing data. This model performs better with suicide class than no suicide i.e model says 1 person actually committed suicide but showing no suicide, and 17 people actually not commite suicide but model shows they commit suicide. With test data, the model performs pretty well with suicide class and model have poor performance with no suicide class. 
+Training data misclassification is `r round(100 - sum(diag(tab1))/sum(tab1)*100,2)`% and testing data misclassification is `r round(sum(diag(tab2))/sum(tab2)*100,2)`%, so neural nets performs some amount of consistency between traing and testing data. This model performs better with loan approved class than no loan approved i.e model says 1 person actually get loan approved but showing no loan approved, and 17 people actually not get loan approved but model shows their loan approved. With test data, the model performs pretty well with loan approved class and model have poor performance with no loan approved class. 
 
 Testing data and traing data has same accuracy. There are other parameter we applied and checked for the optimal model. They are: 
 
@@ -845,7 +845,7 @@ accuracy_bimod1 <- (TP + TN)/(TN + FN + TP + FP)
 paste0("Accuracy : " ,round(accuracy_bimod1 * 100, 2))
 ```
 
-The model showing 21 misclassification, The model predicts poor for both suicide class and no suicide class. 
+The model showing 21 misclassification, The model predicts poor for both loan approved class and no loan approved class. 
 
 The accuracy is not promising, Corelation plot helps to exclude the variable which are co-related to ecah other. From cor plot we see strong relation between TotalIncome and Loan Amount. We include the variables which are statistically significant. Here Credit_History and Property_Area are statistically significant menas low p-value. We build our second LR model with this two variables. 
 
@@ -884,11 +884,9 @@ accuracy_bimod2 <- (TP + TN)/(TN + FN + TP + FP)
 paste0("Accuracy : " ,round(accuracy_bimod2 * 100, 2))
 ```
 
-Accuracy improved from 72% to 74%. The model has 20 misclassification, the model is predicts poor performnace for both suicide and no-suicide class. Out of both the classes no suice class perform better than suicide class. 
+Accuracy improved from 72% to 74%. The model has 20 misclassification, the model is predicts poor performnace for both Loan approved and no loan approved class. Out of both the classes no-loan approved class perform better than loan approved class. 
 
  
-
-
 ## Model Selection
 
 ## Final Model Discussion / Interpretation
