@@ -45,7 +45,7 @@ library(keras) #alt. NN approach
 library(neuralnet) # Normalization 
 require(reshape2) # small multiple density plot
 #Utilize customized functions
-
+library(class) # kNN 
 plot_corr_matrix <- function(dataframe, significance_threshold){
   title <- paste0('Correlation Matrix for significance > ',
                   significance_threshold)
@@ -241,10 +241,11 @@ loan <- subset(loan, select = -c(1, 2, 3, 4, 7) ) #drop poor predictors
 #head(loan) #verify
 
 
-# created 3 datasets for LR, Neural nets, NN using keras
+# created 4 datasets for LR, Neural nets, NN using keras, kNN
 loan_new2 <- loan
 loan_nn <- loan
 loan_keras <- loan
+loan_knn <- loan
 ```
 
 ## Independent Variable Distributions
@@ -576,7 +577,7 @@ trainingtarget <- loan_keras[ind==1, 6]
 testingtarget <- loan_keras[ind==2, 6]
 ```
 
-Normalize the values apply mean and standard deviation to the columns. All the values present in between 0 and 1 in training and testing set. 
+Normalize the values apply mean and standard deviation to the columns. Normalize indepenedent variables by substracting mean from the value, devide by standard deviation. Use scale function to do normalize in both train and test sets. 
 
 ```{r}
 # Normalize
@@ -589,6 +590,7 @@ testing_keras <- scale(testing_keras, center = m, scale = s)
 Create the model using `keras_model_sequential`, pass the `layer_dense()`. This function creates the hidden layer in the network. Can apply multiple hidden layer using the same function. For hidden layer activation function is `relu` stands for rectified linear unit, by default the value for activation function is linear. Need to define the input shape, we have 5 input variable so shape is 5. 
 
 ```{r}
+set.seed(77)
 #Create model
 model_keras <- keras_model_sequential()
 model_keras %>% 
@@ -598,6 +600,7 @@ model_keras %>%
 ```
 
 ```{r}
+set.seed(77)
 #Compile model
 model_keras %>% compile(loss = 'mse',
                   optimizer = optimizer_rmsprop(lr= 0.005),
@@ -611,6 +614,7 @@ For compile the model using loss, optimizer and metrics. There are other arrgume
 * metrics = List of metrics to be evaluated by the model during training and testing. Here we pass accuracy.
 
 ```{r}
+set.seed(77)
 #Fit model
 model_keras_train <- model_keras %>%
          fit(training_keras,
@@ -637,6 +641,7 @@ The first graph is for loss and 2nd graph is for accuracy. Initially there are v
 Lets have a look on model evaluation.
 
 ```{r}
+set.seed(77)
 #Evaluate model
 model_keras %>% evaluate(testing_keras, testingtarget)
 
@@ -673,6 +678,7 @@ We apply the same code but with different neurons count and hidden layer.
 Here apply with different neurons and layer_dropout. While increase more number of neurons the accuracy going up. But this is not the same for all cases. Model training can change the parameter of learning rate, to improve the model performance. 
 
 ```{r}
+set.seed(88)
 #Create model
 model_keras_2 <- keras_model_sequential()
 model_keras_2 %>% 
@@ -682,6 +688,7 @@ model_keras_2 %>%
 ```
 
 ```{r}
+set.seed(88)
 #Compile model
 model_keras_2 %>% compile(loss = 'mse',
                   optimizer = optimizer_rmsprop(lr= 0.005),
@@ -689,6 +696,7 @@ model_keras_2 %>% compile(loss = 'mse',
 ```
 
 ```{r}
+set.seed(88)
 #Fit model
 model_keras_train2 <- model_keras_2 %>%
          fit(training_keras,
@@ -701,6 +709,7 @@ plot(model_keras_train2)
 ```
 
 ```{r}
+set.seed(88)
 #Evaluate model
 model_keras_2 %>% evaluate(testing_keras, testingtarget)
 
@@ -721,7 +730,7 @@ tab5
 sum(diag(tab5))/sum(tab5)
 ```
 
-Accuracy improved 78% to 80%, this model also perform same as first keras model. Better performance with Yes category and poor performance with No category. There are total 22 misclassification. 
+Accuracy improved 78% to 80%, this model also perform same as first keras model. Better performance with Yes category and poor performance with No category. There are total 21 misclassification. 
 
 ## Neural Networks with normalization
 
@@ -1040,6 +1049,153 @@ paste0("Accuracy : " ,round(accuracy_bimod2 * 100, 2))
 
 Accuracy improved from 72% to 74%. The model has 20 misclassification, the model is predicts poor performnace for both Loan approved and no loan approved class. Out of both the classes no-loan approved class perform better than loan approved class. 
 
+
+
+## K-Nearest Neighbors Classification
+
+The K-Nearest Neighbors Classification algorithm classifies observations by allowing the K observations in the training set that are nearest to the new observation to “vote” on the class of the new observation. More specifically, the algorithm works as follows:
+
+* Calculate the distance between the new observation and EACH obsevation in the training set. 
+* Distances are calculated within the feature space.
+* Select the K observations in the training set that are nearest to the new observation.
+* Determine the majority class within the K nearest neighbors.
+* Classify the new observation as this majority class.
+* If there is a tie in the vote, resolve this according to some pre-determine process
+
+The dataset having total 6 columns, and 614 observations. Loan_Status is the target variable. This model predict the loan approval based on employment types, Credit history, Property, Loan amount and Total income. 
+
+#### Data preparation for kNN
+
+We will now use the `knn` function from the class package to create a 3-Nearest Neighbors model for the loan dataset.
+
+Data preparation, convert categorical variables to numerical. Knn performs well with same scale and numerical data. kNN doesn't work great in general when features are on different scales. For many machine learning algorithms, it is important to make sure that the features are on roughly the same scale before training. This is especially true of distance-based algorithms such as K-Nearest Neighbors. We apply standard scaling. With standardization, each column in the training set is scaled to have a mean of zero and a standard deviation of 1. If xi is a single observation of a particular feature, then its scaled value zi is given by:
+
+$z_i= \frac {x_i−\bar x}{s_x}$
+
+After scaling, Split the data in 80 - 20 %, train data - 80% and test data - 20%. 
+
+```{r}
+loan_knn <-  loan_knn[, c(1, 3, 4, 2, 6, 5)]
+
+# Convert Credit_History numeric type
+loan_knn$Credit_History <- as.numeric(loan_knn$Credit_History)
+
+# Change Variables values
+loan_knn$Self_Employed <- ifelse(loan_knn$Self_Employed == "Yes", 1, 0)
+loan_knn$Loan_Status <- ifelse(loan_knn$Loan_Status=="Y", 1, 0)
+
+loan_knn$Property_Area <- case_when(
+  loan_knn$Property_Area == "Semiurban" ~ 2,
+  loan_knn$Property_Area == "Urban" ~ 1,
+  loan_knn$Property_Area == "Rural" ~ 0,
+)
+
+# Partition
+set.seed(26)
+ind <- sample(2, nrow(loan_knn), replace = T, prob = c(.8, .2))
+training_knn <- loan_knn[ind==1,1:5]
+testing_knn <- loan_knn[ind==2, 1:5]
+trainingtarget_knn <- loan_knn[ind==1, 6]
+testingtarget_knn <- loan_knn[ind==2, 6]
+
+# unscaled data
+train <- loan_knn[ind==1,1:5]
+test <- loan_knn[ind==2, 1:5]
+
+
+# Normalize scales data
+m <- colMeans(training_knn)
+s <- apply(training_knn, 2, sd)
+training_knn <- scale(training_knn, center = m, scale = s)
+testing_knn <- scale(testing_knn, center = m, scale = s)
+```
+
+**Selecting K** 
+
+We will now build several KNN models. For each K from 1 to 100, we will calculate training and validation accuracy for the KNN model, using scaled data.
+
+```{r}
+set.seed(26)
+
+train_acc <- c()
+valid_acc <- c()
+train_acc_sc <- c()
+valid_acc_sc <- c()
+
+k_range <- 1:100
+for (i in k_range) {
+  #  Unscaled data
+  set.seed(26)
+  train_pred_a <- knn(train, test, trainingtarget_knn, k=i)
+  train_acc <- c(train_acc, mean(train_pred_a == trainingtarget_knn))
+  
+  set.seed(26)
+  valid_pred_a <- knn(train, test, trainingtarget_knn, k=i)
+  valid_acc <- c(valid_acc, mean(valid_pred_a == testingtarget_knn))
+  
+  # Standard Scaling
+  set.seed(26)
+  train_pred <- knn(training_knn, testing_knn, trainingtarget_knn, k=i)
+  train_acc_sc <- c(train_acc_sc, mean(train_pred == trainingtarget_knn))
+  
+  set.seed(26)
+  valid_pred <- knn(training_knn, testing_knn, trainingtarget_knn, k=i)
+  valid_acc_sc <- c(valid_acc_sc, mean(valid_pred == testingtarget_knn))
+}
+print(max(valid_acc))
+print(max(valid_acc_sc))
+```
+
+
+**Training and Validation Curves for actual Data(unscaled)**
+
+```{r}
+plot(k_range, train_acc, pch='.', ylim=c(0.55, 1), col='salmon', ylab="")
+lines(k_range, train_acc, lwd=2, col='salmon')
+lines(k_range, valid_acc, lwd=2, col='cornflowerblue')
+legend(65, 1, legend=c("Training Acc", "Validation Acc"),
+       col=c("salmon", "cornflowerblue"), lty=1, lwd=2, cex=0.8)
+```
+
+**Training and Validation Curves for Standard Scaled Data**
+
+```{r}
+
+plot(k_range, train_acc_sc, pch='.', ylim=c(0.55, 1), col='salmon', ylab="")
+lines(k_range, train_acc_sc, lwd=2, col='salmon')
+lines(k_range, valid_acc_sc, lwd=2, col='cornflowerblue')
+legend(65, 1, legend=c("Training Acc", "Validation Acc"),
+       col=c("salmon", "cornflowerblue"), lty=1, lwd=2, cex=0.8)
+```
+
+**Selecting the Final Model** 
+
+Our best validation performance was obtained using scaled data. Let’s determine the value of K used to create this particular model.
+
+```{r}
+acc <- which.max(valid_acc)
+acc
+```
+
+We will now recalculate the training and validation accuracies for this model, given k = `r which.max(valid_acc)`. We can use the table function to create a quick confusion matrix.
+
+```{r}
+set.seed(26)
+train_pred <- knn(train, test, trainingtarget_knn, k=acc)
+train_acc <- mean(train_pred == trainingtarget_knn)
+  
+set.seed(26)
+valid_pred <- knn(train, test, trainingtarget_knn, k=acc)
+valid_acc <- mean(valid_pred == testingtarget_knn)
+
+cat('Training Accuracy:   ', train_acc, '\n',
+    'Validation Accuracy: ', valid_acc, sep='')
+
+tab_knn <-  table(Predicted = valid_pred, Actual = testingtarget_knn)
+tab_knn
+```
+
+The confusion matrix shows, total 33 misclassification on test data. Model predicts loan approval category Yes class better than No class category. More misclassification occure in No class category.
  
 ## Model Selection
 
