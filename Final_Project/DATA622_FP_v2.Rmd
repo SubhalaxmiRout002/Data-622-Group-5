@@ -510,7 +510,7 @@ Being that each of our optimization attempts were fruitless, we next opted to ex
 
 Background / Intro
 
-This model is a densely connected deep neural network with two hidden layers and an output layer. Training a neural network revolves around the following objects:
+This model is a densely connected deep neural network with multiple hidden layers and an output layer. Training a neural network revolves around the following objects:
 
 * Layers, which are combined into a network (or model)
 * The input data and corresponding targets
@@ -519,7 +519,7 @@ This model is a densely connected deep neural network with two hidden layers and
 
 This model we use all these steps to build the model using keras. Use `keras` package to make this model. 
 
-Convert all categorical variables to numerical variables. 
+Convert all categorical variables to numerical variables. Plot the neural networks with 2 hidden layes. First hidden layer with 4 neurons and 2 nd hidden layer with 2 neurons. 
 
 ```{r}
 #Preprocess data
@@ -553,10 +553,10 @@ plot(n,
      col.hidden.synapse = 'darkgreen',
      show.weights = F,
      information = F,
-     fill = 'lightblue')
+     fill = 'lightblue', rep = "best")
 ```
 
-The above model has 5 input layers, 2 hidden layers (i.e 4 nurons in one layer and other has 2 neurons). This is connect to the output neuron. We make the dataset to a matrix format, and split in to train and test. 
+The above model has 5 inputs, 2 hidden layers (i.e 4 nurons in one layer and other has 2 neurons). This is connect to the output neuron. We make the dataset to a matrix format, and split in to train and test. 
 
 ```{r}
 # Matrix
@@ -564,7 +564,7 @@ loan_keras <- as.matrix(loan_keras)
 dimnames(loan_keras) <- NULL
 ```
 
-Split the data in to train and test, train data 80% and test data 20%. Create 4 sets of data i.e training, testing, train traget and test target. Train and test traget contains the ouput variable i.e Loan Status. Training and testing datasets contains all other variables other than output variable.
+Split the data in to train and test, train data have 80% of the total data and test data 20%. Create 4 sets of data i.e training, testing, traintraget and testtarget. Train and test target contains the output variable i.e `Loan_Status`. Training and testing datasets contains all other variables other than output variable.
 
 ```{r}
 # Partition
@@ -619,6 +619,7 @@ model_keras_train <- model_keras %>%
              batch_size = 32,
              validation_split = 0.1
              )
+plot(model_keras_train)
 ```
 
 Before fitting the training data (passing the training data to the model), the model requires compilation. The loss function, optimizer, and metrics are specified during this step.
@@ -631,9 +632,9 @@ To train model,
 * batch_size = Integer or NULL. Number of samples per gradient update. If unspecified, batch_size will default to 32.
 * validation_split = Fraction of the training data to be used as validation data (between 0 and 1).
 
-The first graph is for loss and 2nd graph is for mean absolute error. Initially there are very less difference between loss and val_loss which is very minimal. This means the training error is low. But after epochs 14 the error is gradually increasing. We see similar pattern in 2nd graph.
+The first graph is for loss and 2nd graph is for accuracy. Initially there are very less difference between loss and val_loss which is very minimal. This means the training error is low. 
 
-Lets have a look on model evaluation. 
+Lets have a look on model evaluation.
 
 ```{r}
 #Evaluate model
@@ -645,6 +646,7 @@ pred_keras <- model_keras %>% predict(testing_keras)
 
 The test feature and target sets can be used to evaluate the model. The results show the overall loss and mean absolute error by using the evaluate() function. It takes two arguments referencing the feature and target test sets.
 
+Evaluation gives total loss and accuracy of the training data. Below table is the confusion matrix and accuracy of the training data. 
 
 ```{r}
 # Confusion matrix and misclassification 
@@ -661,12 +663,14 @@ sum(diag(tab4))/sum(tab4)
 
 Accuracy is 78%, model classify loan approve yes category well but shows poor performance for loan approve no category. 
 
-We have used (4:2) neurons and only 2 hidden layer, there are scope for improvement. We will try with multiple neurons and layer dropout that helps to reduce over fitting. 
+We have used 6 neurons and 2 hidden layer, there are scope for improvement. We will try with multiple neurons and layer dropout that helps to reduce over fitting. 
 
 We apply the same code but with different neurons count and hidden layer. 
 
 
 #### **Fine tune the model**
+
+Here apply with different neurons and layer_dropout. While increase more number of neurons the accuracy going up. But this is not the same for all cases. Model training can change the parameter of learning rate, to improve the model performance. 
 
 ```{r}
 #Create model
@@ -686,13 +690,14 @@ model_keras_2 %>% compile(loss = 'mse',
 
 ```{r}
 #Fit model
-model_keras_train <- model_keras_2 %>%
+model_keras_train2 <- model_keras_2 %>%
          fit(training_keras,
              trainingtarget,
              epochs = 100,
              batch_size = 32,
              validation_split = 0.2
              )
+plot(model_keras_train2)
 ```
 
 ```{r}
@@ -701,8 +706,8 @@ model_keras_2 %>% evaluate(testing_keras, testingtarget)
 
 pred_keras_2 <- model_keras_2 %>% predict(testing_keras)
 
-
 ```
+Below shows the confusion matrix and the accuracy after model tuing.
 
 ```{r}
 # Confusion matrix and misclassification 
@@ -717,7 +722,6 @@ sum(diag(tab5))/sum(tab5)
 ```
 
 Accuracy improved 78% to 80%, this model also perform same as first keras model. Better performance with Yes category and poor performance with No category. There are total 22 misclassification. 
-
 
 ## Neural Networks with normalization
 
@@ -772,7 +776,7 @@ facet_wrap(~variable, scales = "free")
 
 #### Model Building 
 
-Split the data in 80% and 20%, train data having 80% of the data and train data having 20% of the data. Then apply the model on train data.
+Split the data in 80% and 20%, train data having 80% of the data and train data having 20% of the data. Then apply the model on train data. Use `sample` package to split the data in to train and test.
 
 ```{r}
 # Data Partition
@@ -784,16 +788,19 @@ testing_nn <- loan_nn[ind==2,]
 dim(training_nn)
 dim(testing_nn)
 ```
-Training data : `dim(training_nn)` <br>
-Testing data : `dim(testing_nn)`
 
-Neural Network model apply some parameters, 
+Dimension of the training and testing data:
 
-* hidden represnts the number of hidden layer, to get the optimal model we can change the number
-* err.fact used for alculation of the error, Alternatively, the strings 'sse' and 'ce' which stand for the sum of squared errors and the cross-entropy can be used.
+Training data : `r dim(training_nn)` <br>
+Testing data : `r dim(testing_nn)`
+
+Parameters apply on Neural Network model, 
+
+* hidden - represnts the number of hidden layer, to get the optimal model we can change the number
+* err.fact - used for calculation of the error, Alternatively, the strings 'sse' and 'ce' which stand for the sum of squared errors and the cross-entropy can be used.
 * linear.output - logical. If act.fct should not be applied to the output neurons set linear output to TRUE, otherwise to FALSE.
 
-Plot the network and discuss about how it input layer, hidden layer and output layer works. 
+Plot the network and discuss about how it input layer, hidden layer and output layer works. Below plots shows one hiden layer. 
 
 ```{r}
 # Neural Networks
@@ -807,21 +814,25 @@ n1 <- neuralnet(Loan_Status~Self_Employed+LoanAmount+Credit_History+Property_Are
                linear.output = FALSE
                )
 
-plot(n1)
+plot(n1, rep = "best")
 ```
 
-Node Output Calculations with Sigmoid Activation Function
+**Node Output Calculations with Sigmoid Activation Function**
+
+Here we will discuss how Neuralnets algo calculate the output node. From the neural net graph, manually calulate the first row of the output node.
 
 Above diagram shows first 5 nodes are input node, lets say N1, N2, N3, N4, and N5. The middle layer is hidden layer i.e N6, and last node is output layer i.e N7. To calculate output node need to calculate N6 output, because the output of N6 is input to N7. Similary to calculate N6 ouput, need to calculate N6 input. 
 
-Note, formula for sigmoid is $1/(1+exp(-x))$
+Note, formula for sigmoid is **1/(1+exp(-x))**
 
-Here is the equation: $ f(x)=b+ w1⋅x1+ w2⋅x2 +...+ wn⋅xn$
+Here is the equation: $f(x)=b+ w1⋅x1+ w2⋅x2 +...+ wn⋅xn$
 
 ```{r}
 # first row
 head(training_nn[1,])
 ```
+
+Above shows the first row of training data. We calculate manually first value of output node and compair the values with training model output.
 
 ```{r} 
 in6 <- 10.47375 + (0*-5.36828) + (0.1432706*2.7186) + (1*-13.27065) + (0.5 * -1.77825) + (0.05539355 * 8.03783)
@@ -833,7 +844,7 @@ output <- compute(n1, training_nn[,-5])
 paste0("First predicted value of NN : ", head(output$net.result, n = 1))
 ```
 
-Both predicted values and manual calculate showing same values, we see last some decimal points are not maching due to round off calculation. 
+Both predicted values and manual calculation showing same values, we see last some decimal points are not maching due to round off calculation. 
 
 Above explanation shows the neural nets prediction calculation.  
 
@@ -842,6 +853,15 @@ Above explanation shows the neural nets prediction calculation.
 Feature selection is an important part of most learning algorithms. Feature selection is used to select the most relevant features from the data.A simple method for feature selection using feedforward neural networks is presented. The method starts by using one input neuron and adds one input at time until the wanted classification accuracy has been achieved or all attributes have been chosen. 
 
 From EDA, we found Credit History is the most important feature for Loan approval. So first start with that feature, then add other relevant feature, untill we get the significantly and improves classification accuracy. 
+
+Testing data and traing data has same accuracy. There are other parameter we applied and checked for the optimal model. They are: 
+
+* tried with `hidden layer` range 1 to 5, multi layer such as c(3,2), c(2,1), and layer repeation (the parameter rep gets the input of repetation, and model will repeat that many times)
+* `Life sign`:specify how much the function will print during the calculation of the neural network. 'none', 'minimal' or 'full'. Tried with 'full'.
+
+* `algorithm` : contains the algorithm type to calculate the neural network. Tried with 'rprop+' refers to resilient backpropagation with and without weight backtracking.
+
+Current model we find the optimal model out of all other models. 
 
 ```{r}
 set.seed(12)
@@ -852,10 +872,11 @@ n <- neuralnet(Loan_Status ~ Credit_History+Property_Area,
                err.fct = "ce",
                linear.output = FALSE
                )
-plot(n)
+
+plot(n, rep = 'best')
 ```
 
-Lets have look on confusion matrix and accuracy on train and test dataset.  
+Lets have look on confusion matrix and accuracy on train dataset.  
 
 ```{r}
 # Confusion Matrix & Misclassification Error - training data
@@ -870,6 +891,8 @@ paste0("Accuracy of training data: ", round(sum(diag(tab1))/sum(tab1) * 100,2))
 
 There are total 91 misclassification based on training data, out of that 6 pople actually get loan approval, model shows their loan is not approved, and 85 people actually loan not approved but model shows their loan approved. This training set model performs better result with loan approved class and poor result with no loan approved class. 
 
+Confusion matrix and accuracy of test dataset.  
+
 ```{r}
 # Confusion Matrix & Misclassification Error - testing data
 output <- compute(n, testing_nn[,-5])
@@ -883,15 +906,6 @@ paste0("Accuracy of testing data: ", round(sum(diag(tab2))/sum(tab2)*100,2))
 
 Training data misclassification is `r round(100 - sum(diag(tab1))/sum(tab1)*100,2)`% and testing data misclassification is `r round(sum(diag(tab2))/sum(tab2)*100,2)`%, so neural nets performs some amount of consistency between traing and testing data. This model performs better with loan approved class than no loan approved i.e model says 1 person actually get loan approved but showing no loan approved, and 17 people actually not get loan approved but model shows their loan approved. With test data, the model performs pretty well with loan approved class and model have poor performance with no loan approved class. 
 
-Testing data and traing data has same accuracy. There are other parameter we applied and checked for the optimal model. They are: 
-
-* tried with `hidden layer` range 1 to 5, multi layer such as c(3,2), c(2,1), and layer repeation (the parameter rep gets the input of repetation, and model will repeat that many times)
-* `Life sign`:specify how much the function will print during the calculation of the neural network. 'none', 'minimal' or 'full'. Tried with 'full'.
-
-* `algorithm` : contains the algorithm type to calculate the neural network. Tried with 'rprop+' refers to resilient backpropagation with and without weight backtracking.
-
-Current model we find the optimal model out of all other models. 
-
 
 ## Logistic Regression 
 
@@ -899,7 +913,7 @@ Logistic Regression is a powerful statistical way of modeling a binomial outcome
 
 For Loan dataset, Loan_status is the Dependent variable and other variables are independent.
 To perform Logistic regression first we check the data is balanced or not. Then split the data in to train and test, fit the model with train data and apply the prediction on test data. 
-We will see the performace matrices for this model, to see ho wthe model is working.
+We will see the performace matrices for this model, to see how the model is working.
 
 ```{r}
 
