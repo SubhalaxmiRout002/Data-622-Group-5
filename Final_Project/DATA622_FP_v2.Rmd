@@ -1082,7 +1082,7 @@ Scaled data, train set name : training_knn, test : testing_knn
 The idea here is, to show the model performance using kNN, using both actual and scaled data. 
 
 ```{r}
-library(class)
+loan_knn <-  loan_knn[, c(1, 3, 4, 2, 6, 5)]
 
 # Convert Credit_History numeric type
 loan_knn$Credit_History <- as.numeric(loan_knn$Credit_History)
@@ -1225,7 +1225,7 @@ tab_knn_sc <-  table(Predicted = valid_pred, Actual = testingtarget_knn)
 tab_knn_sc
 ```
 
-This model has high accuracy, but this is not a good model for predict loan approve No category. This model predict 100% accuract for Yes category, but this is not a recommended model to use. 
+This model has high accuracy, but this is not a prefered model for predict loan approve No category. This model predict 100% accuract for Yes category, but this is not a recommended model to use. 
 
 ## Model Selection
 
