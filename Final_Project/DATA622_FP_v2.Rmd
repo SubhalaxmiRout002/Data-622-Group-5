@@ -47,6 +47,7 @@ require(reshape2) # small multiple density plot
 library(class) # kNN 
 library(rpart) # DT
 library(rpart.plot)# DT
+library(randomForest) # RF
 
 #Utilize customized functions
 plot_corr_matrix <- function(dataframe, significance_threshold){
@@ -244,12 +245,13 @@ loan <- subset(loan, select = -c(1, 2, 3, 4, 7) ) #drop poor predictors
 #head(loan) #verify
 
 
-# created 5 datasets for LR, Neural nets, NN using keras, kNN, Decison Tree
+# created 6 datasets for LR, Neural nets, NN using keras, kNN, Decison Tree, Random forest
 loan_new2 <- loan
 loan_nn <- loan
 loan_keras <- loan
 loan_knn <- loan
 loan_dt <-  loan
+loan_rf <- loan
 ```
 
 ## Independent Variable Distributions
@@ -1387,6 +1389,185 @@ Accuracy has improved to 81%. Total 38 misclassifications exist in the test data
 
 Compare baseline model and final model, the baseline model is better than final model. Because final model shows overfitting for loan approved Yes class. 
 
+## Random Forest
+
+To expand on our analysis of the loan approval dataset, we’ll run a few random forest models to see if they are a more effective way to classify whether or not someone loan will be approved or not approved.
+
+**Data Preparation**
+
+Split the dataset into the Training set and Test set. Train : 80%, test : 20%. Random Forest is a tree-based model and does not require feature scaling. One advantage of decision tree based methods like random forests is their ability to natively handle categorical predictors without having to first transform them (e.g., by using feature engineering techniques). 
+
+```{r}
+set.seed(66)
+
+# Split data into training and testing sets
+sample_data_rf = sample.split(loan_rf, SplitRatio = 0.8)
+train_data_rf <- subset(loan_rf, sample_data_rf == TRUE)
+test_data_rf <- subset(loan_rf, sample_data_rf == FALSE)
+
+```
+
+The training set has `r dim(train_data_rf)[1]` observations and `r dim(train_data_rf)[2]` variables.
+The testing set has `r dim(train_data_rf)[1]` observations and `r dim(train_data_rf)[2]` variables.
+
+#### **Random Forest Model**
+
+Use `randomforest` package to build the model. Run a simple decision tree was run using all variables as predictors.
+
+```{r}
+set.seed(66)
+
+# fit a Random Forest model with training data
+model_rf <- randomForest(Loan_Status ~ .,
+                           data=train_data_rf)
+# display model details
+model_rf
+```
+
+**Error Rate**
+
+This plot shows the class error rates of the random forest model. As the number of trees increases, the error rate approaches zero for Y classifier. For N  classifier, initial increase of few trees error rate reduced then remain constant. 
+
+```{r}
+plot(model_rf, main = "Error rate of random forest")
+legend("topright", cex =1, legend=colnames(model_rf$err.rate), lty=c(1,2,3), col=c(1,2,3))
+```
+
+**Random Forest Evaluation**
+
+Predict the Test set results. 
+
+```{r}
+set.seed(66)
+
+pred_rf <- predict(model_rf, test_data_rf, type="class")
+tab_rf <- table(Predicted = pred_rf, Actual = test_data_rf$Loan_Status)
+tab_rf
+pred_rf <- as.factor(pred_rf)
+test_data_rf$Loan_Status <- as.factor(test_data_rf$Loan_Status)
+paste0("Accuracy : ",round(sum(diag(tab_rf))/sum(tab_rf)*100,2))
+
+RF_Model_1 <- confusionMatrix(pred_rf, test_data_rf$Loan_Status)$byClass
+acc1 <- confusionMatrix(pred_rf, test_data_rf$Loan_Status)$overall['Accuracy']
+RF_Model_1 <- data.frame(RF_Model_1)
+RF_Model_1 <- rbind("Accuracy" = acc1, RF_Model_1)
+```
+
+**Importance of Variables**
+
+The mean decrease in Gini coefficient is a measure of how each variable contributes to the homogeneity of the nodes and leaves in the resulting random forest…Variables that result in nodes with higher purity have a higher decrease in Gini coefficient.” This importance chart displays the variables that affected the random forest, from greatest impact to least impact, from top to bottom.
+
+```{r}
+varImpPlot(model_rf, main = "Feature Importance of RF Model")
+```
+
+**Tuning on Number of Trees**
+
+```{r}
+m_opt_ntrees <- which.min(model_rf$err.rate[,'OOB'])
+m_opt_err_rate <- min(model_rf$err.rate[,'OOB'])
+
+cat("Optimal Number of Trees: ", m_opt_ntrees, "\n",
+    "Minimum Error Rate:      ", m_opt_err_rate, sep="")
+```
+
+Create another random forest model using Optimal Number of Trees. 
+
+##### RF Model 2 (Optimal tree)
+
+```{r}
+set.seed(66)
+model_rf_2 <- randomForest(Loan_Status ~ .,
+                           data=train_data_rf, ntree=m_opt_ntrees, importance=TRUE)
+```
+
+**Test data Confusion matrix and Accuracy**
+
+Predict the test data. 
+
+```{r}
+set.seed(66)
+
+pred_rf_2 <- predict(model_rf_2, test_data_rf, type="class")
+tab_rf_2 <- table(Predicted = pred_rf_2, Actual = test_data_rf$Loan_Status)
+tab_rf_2
+pred_rf_2 <- as.factor(pred_rf_2)
+paste0("Accuracy : ",round(sum(diag(tab_rf_2))/sum(tab_rf_2)*100,2))
+
+RF_Model_2 <- confusionMatrix(pred_rf_2, test_data_rf$Loan_Status)$byClass
+acc2 <- confusionMatrix(pred_rf_2, test_data_rf$Loan_Status)$overall['Accuracy']
+RF_Model_2 <- data.frame(RF_Model_2)
+RF_Model_2 <- rbind("Accuracy" = acc2, RF_Model_2)
+```
+
+**Tuning on mtry and ntree**
+
+Create another RF model with tuning mtry and ntree. 
+
+```{r}
+oob_acc_list <- c()
+opt_ntree_list <- c()
+
+for(i in 1:29){
+  set.seed(66)
+  temp_mod <- randomForest(Loan_Status ~ .,train_data_rf , ntree=500, importance=TRUE, mtry=i)
+  oob_acc_list <- c(oob_acc_list, min(temp_mod$err.rate[,'OOB']))
+  opt_ntree_list <- c(opt_ntree_list, which.min(temp_mod$err.rate[,'OOB']))
+}
+
+opt_mtry <- which.min(oob_acc_list)
+opt_ntree <- opt_ntree_list[opt_mtry]
+min_oob_acc <- min(oob_acc_list)
+
+cat("Optimal Value of mtry:  ", opt_mtry, "\n",
+    "Optimal Value of ntree: ", opt_ntree, "\n",
+    "Minimum OOB Accuracy:   ", min_oob_acc, sep="")
+
+plot(1:29, oob_acc_list, xlab="Value of mtry", ylab="Minimum OOB Accuracy Score")
+lines(1:29, oob_acc_list)
+abline(v=which.min(oob_acc_list), col="red", lty=2, lwd=1)
+```
+
+##### RF Model 3 (Optimal mtry and ntree)
+
+```{r}
+set.seed(66)
+
+model_rf_3 <- randomForest(Loan_Status ~ .,
+                           data=train_data_rf, ntree=opt_ntree, mtry=opt_mtry, importance=TRUE)
+```
+
+**Test data Confusion matrix and Accuracy**
+
+Predict the test data. 
+
+```{r}
+set.seed(66)
+
+pred_rf_3 <- predict(model_rf_3, test_data_rf, type="class")
+tab_rf_3 <- table(Predicted = pred_rf_3, Actual = test_data_rf$Loan_Status)
+tab_rf_3
+pred_rf_3 <- as.factor(pred_rf_3)
+paste0("Accuracy : ",round(sum(diag(tab_rf_3))/sum(tab_rf_3)*100,2))
+
+RF_Model_3 <- confusionMatrix(pred_rf_3, test_data_rf$Loan_Status)$byClass
+acc3 <- confusionMatrix(pred_rf_3, test_data_rf$Loan_Status)$overall['Accuracy']
+RF_Model_3 <- data.frame(RF_Model_3)
+RF_Model_3 <- rbind("Accuracy" = acc3, RF_Model_3)
+```
+
+#### Model comparision
+
+Compare all 3 models i.e First RF model (baseline model), Second RF model (tree tuning), and third RF model (tuning mtry and ntree)
+
+```{r}
+tabularview <- data.frame(RF_Model_1, RF_Model_2, RF_Model_3)
+kable(tabularview) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down") %>% column_spec(1, bold = T)
+```
+
+The above table shows the comparative statistics of each model’s performance. 
+
+All 3 random forest model has accuracy above 85%. The models have poor performance for the Loan rejected class and very high performance for the Loan accepted class. This may be due to the unbalance of the classifier in the data. The count of Y is higher than N. Some other models may predict better prediction on Loan approved classes. 
 
 ## Model Selection
 
