@@ -44,8 +44,11 @@ library(caTools)
 library(keras) #alt. NN approach
 library(neuralnet) # Normalization 
 require(reshape2) # small multiple density plot
-#Utilize customized functions
 library(class) # kNN 
+library(rpart) # DT
+library(rpart.plot)# DT
+
+#Utilize customized functions
 plot_corr_matrix <- function(dataframe, significance_threshold){
   title <- paste0('Correlation Matrix for significance > ',
                   significance_threshold)
@@ -241,11 +244,12 @@ loan <- subset(loan, select = -c(1, 2, 3, 4, 7) ) #drop poor predictors
 #head(loan) #verify
 
 
-# created 4 datasets for LR, Neural nets, NN using keras, kNN
+# created 5 datasets for LR, Neural nets, NN using keras, kNN, Decison Tree
 loan_new2 <- loan
 loan_nn <- loan
 loan_keras <- loan
 loan_knn <- loan
+loan_dt <-  loan
 ```
 
 ## Independent Variable Distributions
@@ -759,7 +763,7 @@ loan_nn$Property_Area <- case_when(
 )
 
 # plot small multiples
-ggplot(data = melt(loan_nn), aes(x = value)) +
+ggplot(data = reshape2::melt(loan_nn), aes(x = value)) +
 stat_density() +
 facet_wrap(~variable, scales = "free")
 
@@ -778,7 +782,7 @@ loan_nn$Property_Area <- (loan_nn$Property_Area - min(loan_nn$Property_Area))/(m
 loan_nn$TotalIncome <- (loan_nn$TotalIncome - min(loan_nn$TotalIncome))/(max(loan_nn$TotalIncome)-min(loan_nn$TotalIncome))
 
 # plot small multiples
-ggplot(data = melt(loan_nn), aes(x = value)) +
+ggplot(data = reshape2::melt(loan_nn), aes(x = value)) +
 stat_density() +
 facet_wrap(~variable, scales = "free")
 ```
@@ -1226,6 +1230,163 @@ tab_knn_sc
 ```
 
 This model has high accuracy, but this is not a prefered model for predict loan approve No category. This model predict 100% accuract for Yes category, but this is not a recommended model to use. 
+
+## Decision Tree
+
+Decision trees build classification or regression models in the form of a tree structure. Datasets are broken into smaller and smaller subsets along chosen parameters, as the associated decision tree is developed.
+
+The result is a tree with nodes and branches. Nodes denote a split point based on the attribute in question while branches denote the corresponding outcome. We start at a “root node”, terminate at “leaf nodes”, and use corresponding lead nodes to provide proportions regarding resulting class labels.
+
+From EDA, we found most imp features and using `Boruta` package. The table shows, in the data Credit_History has highest impotance. 2nd highest impotance feature is TotalIncome, 3rd highest feature importance is LoanAmount. There is a strong co-relation we found between TotalIncome and LoanAmount. Decision trees and boosted trees algorithms are immune to multicollinearity by nature . When they decide to split, the tree will choose only one of the perfectly correlated features. So, multicollinearity not be the issue here. 
+
+```{r}
+# feature impotance
+boruta_output = Boruta(Loan_Status ~ ., data = loan_dt, doTrace = 0, maxRuns = 1000)  
+roughFixMod = TentativeRoughFix(boruta_output)
+importance = attStats(TentativeRoughFix(boruta_output))
+importance = importance[importance$decision != 'Rejected', c('meanImp', 'decision')]
+kable(head(importance[order(-importance$meanImp), ]), 
+      caption = "Feature Importance of Loan Data") %>%
+  kable_styling(bootstrap_options = "striped", full_width = TRUE)
+```
+
+**Data preparation**
+
+We decide to split 80/20  for our testing and training datasets. Using R’s built-in rpart (short for Recursive Partitioning and Regression Tree) function, plot the resulting model.
+
+```{r}
+set.seed(44)
+
+# Split data into training and testing sets
+sample_data = sample.split(loan_dt, SplitRatio = 0.8)
+train_data <- subset(loan_dt, sample_data == TRUE)
+test_data <- subset(loan_dt, sample_data == FALSE)
+
+
+# Plot tree
+tree_mod <- rpart(Loan_Status ~ ., data = train_data, method="class", 
+                  control = rpart.control(minsplit = 4, 
+                                          minbucket =  2, 
+                                          cp = 0, 
+                                          maxdepth = 6))
+rpart.plot(tree_mod, extra=1, cex=0.8)
+```
+
+#### Baseline Model
+
+```{r}
+train_pred <- predict(tree_mod, train_data, type="class")
+test_pred <- predict(tree_mod, test_data, type="class")
+
+paste("Confusin matrix of Test data")
+table(Predicted = test_pred, Actual = test_data$Loan_Status)
+
+cat('Training Accuracy: ', mean(train_pred == train_data$Loan_Status), '\n',
+   'Test Set Accuracy: ', mean(test_pred == test_data$Loan_Status), sep='')
+
+```
+
+Confusion matrix of test data, shows 79% accuracy. There are total 43 misclassification occours. The model slightly better for predict Yes category for loan than No category. 
+
+The next step is to prune the tree to optimal size, may improve the model accuracy. To get optimize model, need to find optimal depth and complexily parameter. Below shows the calculation of optimal depth and complex parameter. 
+
+**Cross-Validation for Model Evaluation**
+
+The appropriate depth can be determined by evaluating the tree on a held-out data set via cross-validation. Essentially Cross Validation allows us to alternate between training and testing when dataset is relatively small to maximize error estimation.
+
+```{r}
+set.seed(1)
+
+bc_tree_cv <- train(Loan_Status ~ ., loan_dt, method="rpart2",
+                 trControl = trainControl(method="cv", number=10),
+                 tuneGrid = expand.grid(maxdepth=c(6)),
+                 control = rpart.control(minsplit = 4,
+                                         minbucket =  2,
+                                         cp = 0))
+bc_tree_cv
+
+```
+
+Accuracy : `r bc_tree_cv$results$Accuracy` <br>
+Kappa : `r bc_tree_cv$results$Kappa`
+
+**Cross-Validation for Tuning Maximum Depth**
+
+In every classification technique, there are some parameters that can be tuned to optimize the classification. Some parameters that can be tuned in the decision tree is max depth (the depth of the tree), complexity parameter. 
+
+```{r}
+set.seed(1)
+
+bc_tree_cv_md <- train(Loan_Status ~ ., loan_dt, method="rpart2", 
+                       trControl = trainControl(method="cv", number=10),
+                       tuneGrid = expand.grid(maxdepth=1:20),
+                       control = rpart.control(minsplit = 4, 
+                                               minbucket =  2, 
+                                               cp = 0))
+
+best_ix = which.max(bc_tree_cv_md$results$Accuracy)
+bc_tree_cv_md$results[best_ix, ]
+```
+
+```{r}
+plot(bc_tree_cv_md$results$maxdepth, bc_tree_cv_md$results$Accuracy, ylab = "Accuracy (cross -Validation)", xlab = "Max Tree Depth")
+lines(1:20, bc_tree_cv_md$results$Accuracy)
+abline(v=which.max(bc_tree_cv_md$results$Accuracy), col="red", lty=2, lwd=1)
+
+```
+
+The plot shows Max Tree depth vs accuracy, more number of depth reduce the accuracy, gives highest accuacy at depth 2. 
+
+**Cross-Validation for Tuning Complexity Parameter**
+
+```{r}
+set.seed(1)
+
+bc_tree_cv_cp <- train(Loan_Status ~ ., loan_dt, method="rpart", 
+                       trControl = trainControl(method="cv", number=10),
+                       tuneGrid = expand.grid(cp=seq(0, 0.1, 0.001)),
+                       control = rpart.control(minsplit = 4, 
+                                               minbucket =  2, 
+                                               maxdepth = 30))
+
+best_ix = which.max(bc_tree_cv_cp$results$Accuracy)
+bc_tree_cv_cp$results[best_ix, ]
+
+plot(bc_tree_cv_cp, pch="")
+```
+
+The plot shows complexity parameter vs accuracy, cp value at high accuracy is 0.035.
+
+#### Final Model DT
+
+Above we get optimal depth and cp values, we can build our final model. The model categorize well with Credit_History.  The tree looks convincing, we get the same result from feature importance table.  In that table, Credit_History has more importance over other features.
+
+```{r}
+tree_mod_final <- rpart(Loan_Status ~ ., data = train_data, method="class", 
+                  control = rpart.control(minsplit = 2, 
+                                          minbucket =  2, 
+                                          cp = 0.035, 
+                                          maxdepth = 2))
+
+rpart.plot(tree_mod_final, extra=1, cex=0.8)
+```
+
+**Confusion Matrix and accuracy**
+
+```{r}
+loanPred <- predict(tree_mod_final, test_data, type = "class")
+
+tab_dt <- table(Predicted = loanPred, Actual = test_data$Loan_Status)
+
+tab_dt
+
+paste0("Accuracy : ", round(sum(diag(tab_dt))/sum(tab_dt) * 100,2))
+```
+
+Accuracy has improved to 81%. Total 38 misclassifications exist in the test data, the model shows actually 3 loans approved but the model shows no loan approved. Similarly, 35 no loan approved but the model shows loan approved. The model predicts good prediction for loan approve category Yes and poor prediction for the loan approved No category. 
+
+Compare baseline model and final model, the baseline model is better than final model. Because final model shows overfitting for loan approved Yes class. 
+
 
 ## Model Selection
 
