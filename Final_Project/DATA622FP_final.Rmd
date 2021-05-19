@@ -375,6 +375,13 @@ nnPred_test <-predict(nnet_model1, test)
 #Test confusion matrix
 table(test$Loan_Status, nnPred_test)
 round((106+21)/nrow(test),3) 
+
+#Performance statistics for later comparison
+NN_Model_1 <- confusionMatrix(as.factor(nnPred_test), as.factor(test$Loan_Status))$byClass
+acc1 <- confusionMatrix(as.factor(nnPred_test), as.factor(test$Loan_Status))$overall['Accuracy']
+NN_Model_1 <- data.frame(NN_Model_1)
+NN_Model_1 <- rbind("Accuracy" = acc1, NN_Model_1)
+
 ```
 
 From above, we observe a training accuracy of 84.3% and a test accuracy of 82.5% which is an improvement of more than 15% over our "baseline accuracy".
@@ -744,6 +751,12 @@ tab5 <- table(Predicted = pred_keras_2,
 tab5
 
 sum(diag(tab5))/sum(tab5)
+
+#Performance statistics for later comparison
+NN_Model_2 <- confusionMatrix(as.factor(pred_keras_2), as.factor(testingtarget))$byClass
+acc1 <- confusionMatrix(as.factor(pred_keras_2), as.factor(testingtarget))$overall['Accuracy']
+NN_Model_2 <- data.frame(NN_Model_2)
+NN_Model_2 <- rbind("Accuracy" = acc1, NN_Model_2)
 ```
 
 Our accuracy on (unseen) test data improved from 86% to greater than 87%. Additionally, although the model still performs better in predicting approvals, its rejection predictions improved from 14 misclassifications to 13 rejections.
@@ -878,6 +891,16 @@ tab2 <- table(Prediction = pred2, Actual = testing_nn$Loan_Status)
 tab2
 paste0("Misclassification Error of testing data: ", round(100 - sum(diag(tab2))/sum(tab2)*100,2))
 paste0("Accuracy of testing data: ", round(sum(diag(tab2))/sum(tab2)*100,2))
+
+#Performance statistics for later comparison
+NN_Model_3 <- confusionMatrix(as.factor(pred2), as.factor(testing_nn$Loan_Status))$byClass
+acc1 <- confusionMatrix(as.factor(pred2), as.factor(testing_nn$Loan_Status))$overall['Accuracy']
+NN_Model_3 <- data.frame(NN_Model_3)
+NN_Model_3 <- rbind("Accuracy" = acc1, NN_Model_3)
+
+#Tabular view of model performance: NN_Model_2 is the strongest
+#tabularview <- data.frame(NN_Model_1, NN_Model_2, NN_Model_3)
+#tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
 
 ```
 
@@ -1143,6 +1166,10 @@ RF_Model_3 <- confusionMatrix(pred_rf_3, test_data_rf$Loan_Status)$byClass
 acc3 <- confusionMatrix(pred_rf_3, test_data_rf$Loan_Status)$overall['Accuracy']
 RF_Model_3 <- data.frame(RF_Model_3)
 RF_Model_3 <- rbind("Accuracy" = acc3, RF_Model_3)
+
+#Tabular view of model performance: RF_Model_1 is the strongest
+#tabularview <- data.frame(RF_Model_1, RF_Model_2, RF_Model_3)
+#tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
 ```
 
 ### kNN
@@ -1466,13 +1493,31 @@ With a rather in-depth exploration of alternative models under our belt, we proc
 
 # Overall Model Comparison
 
-LEFT OFF HERE: create Kable table for NN, alt, and all models. Select the best model. Proceed to compare this model vs. best performing others (RF, DT, XGB ...).
+We put our strongest Random Forest and Neural Network models side-by-side to interpret their common classification metrics and determine which has the greatest predictive accuracy.
 
-Metric intro / discussion
+We consider the following classification metrics in consulting each model's Confusion Matrix:
 
-Table
+* **Accuracy **: $\frac{TP+TN}{TP + FP + TN + FN}$
+* **Sensitivity (Recall) **: true positive rate. $\frac{TP}{TP + FN}$
+* **Specificity**: true negative rate. $\frac{TN}{TN + FP}$
+* **Pos Pred Value (Precision) **: probability that predicted positive is truly positive. $\frac{TP}{TP + FP}$ 
+* **Neg Pred Value**: probability that predicted negative is truly negative. $\frac{TN}{(TN + FN)}$ 
+* **F1**: harmonic mean of model's precision and recall. $\frac{2 * (Precision * Recall)}{Precision + Recall}$ 
+* **Prevalence**: truly positive observations as proportion of total number of observations. $\frac{TP + FN}{TP + FP + FN + TN}$ 
+* **Detection Rate**: true positives detected as proportion of entire total population. $\frac{TP}{TP + FP + FN + TN}$
+* **Detection Prevalence**: predicted positive events over total number of predictions. $\frac{TP + FP}{TP + FP + FN + TN}$
+* **Balanced Accuracy**: measure of model's that is especially useful when classes are imbalanced. $\frac{Sensitivity + Specificity}{2}$
 
-Interpretation
+These models are all applied to the test data set and make use of the **confusionMatrix** function from the caret library. We present the corresponding common classification metrics as a kable table to glean more insight regarding the relative strength of each model's performance:
+
+```{r}
+#Tabular view of our 2 strongest models:
+tabularview <- data.frame(RF_Model_1, NN_Model_2)
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+
+```
+
+LEFT OFF HERE: Discuss how NN outperformed all others but RF outperformed NN ... Why might that be?
 
 ***
 
