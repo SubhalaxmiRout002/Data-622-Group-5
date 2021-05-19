@@ -362,7 +362,15 @@ round((308+78)/nrow(train),3)
 nnPred_test <-predict(nnet_model1, test)
 #Test confusion matrix
 table(test$Loan_Status, nnPred_test)
+
 round((105+25)/nrow(test),3) 
+
+# new code for comp tab
+NN_Model_1 <- confusionMatrix(factor(nnPred_test), factor(test$Loan_Status))$byClass
+nn_acc_1 <- confusionMatrix(factor(nnPred_test), factor(test$Loan_Status))$overall['Accuracy']
+NN_Model_1 <- data.frame(NN_Model_1)
+NN_Model_1 <- rbind("Accuracy" = nn_acc_1, NN_Model_1)
+
 ```
 
 From above, we observe a training accuracy of 83.9% and a test accuracy of 84.4% which is an improvement of nearly 20% over our "baseline accuracy".
@@ -734,6 +742,13 @@ tab5 <- table(Predicted = pred_keras_2,
 tab5
 
 sum(diag(tab5))/sum(tab5)
+
+# new code for comp tab
+NN_Model_2 <- confusionMatrix(factor(pred_keras_2), factor(testingtarget))$byClass
+nn_acc_2 <- confusionMatrix(factor(pred_keras_2), factor(testingtarget))$overall['Accuracy']
+NN_Model_2 <- data.frame(NN_Model_2)
+NN_Model_2 <- rbind("Accuracy" = nn_acc_2, NN_Model_2)
+
 ```
 
 Accuracy improved 78% to 80%, this model also perform same as first keras model. Better performance with Yes category and poor performance with No category. There are total 21 misclassification. 
@@ -917,6 +932,13 @@ tab2 <- table(Prediction = pred2, Actual = testing_nn$Loan_Status)
 tab2
 paste0("Misclassification Error of testing data: ", round(100 - sum(diag(tab2))/sum(tab2)*100,2))
 paste0("Accuracy of testing data: ", round(sum(diag(tab2))/sum(tab2)*100,2))
+
+# new code for comp tab
+NN_Model_3 <- confusionMatrix(factor(pred2), factor(testing_nn$Loan_Status))$byClass
+nn_acc_3 <- confusionMatrix(factor(pred2), factor(testing_nn$Loan_Status))$overall['Accuracy']
+NN_Model_3 <- data.frame(NN_Model_3)
+NN_Model_3 <- rbind("Accuracy" = nn_acc_3, NN_Model_3)
+
 ```
 
 Training data misclassification is `r round(100 - sum(diag(tab1))/sum(tab1)*100,2)`% and testing data misclassification is `r round(sum(diag(tab2))/sum(tab2)*100,2)`%, so neural nets performs some amount of consistency between traing and testing data. This model performs better with loan approved class than no loan approved i.e model says 1 person actually get loan approved but showing no loan approved, and 17 people actually not get loan approved but model shows their loan approved. With test data, the model performs pretty well with loan approved class and model have poor performance with no loan approved class. 
@@ -1570,6 +1592,28 @@ The above table shows the comparative statistics of each model’s performance.
 All 3 random forest model has accuracy above 85%. The models have poor performance for the Loan rejected class and very high performance for the Loan accepted class. This may be due to the unbalance of the classifier in the data. The count of Y is higher than N. Some other models may predict better prediction on Loan approved classes. 
 
 ## Model Selection
+
+We put our all of our models side-by-side-by-side to interpret their common classification metrics and determine which has the greatest predictive accuracy.
+
+We consider the following classification metrics in consulting each model's Confusion Matrix:
+
+* **Accuracy **: $\frac{TP+TN}{TP + FP + TN + FN}$
+* **Sensitivity (Recall) **: true positive rate. $\frac{TP}{TP + FN}$
+* **Specificity**: true negative rate. $\frac{TN}{TN + FP}$
+* **Pos Pred Value (Precision) **: probability that predicted positive is truly positive. $\frac{TP}{TP + FP}$ 
+* **Neg Pred Value**: probability that predicted negative is truly negative. $\frac{TN}{(TN + FN)}$ 
+* **F1**: harmonic mean of model's precision and recall. $\frac{2 * (Precision * Recall)}{Precision + Recall}$ 
+* **Prevalence**: truly positive observations as proportion of total number of observations. $\frac{TP + FN}{TP + FP + FN + TN}$ 
+* **Detection Rate**: true positives detected as proportion of entire total population. $\frac{TP}{TP + FP + FN + TN}$
+* **Detection Prevalence**: predicted positive events over total number of predictions. $\frac{TP + FP}{TP + FP + FN + TN}$
+* **Balanced Accuracy**: measure of model's that is especially useful when classes are imbalanced. $\frac{Sensitivity + Specificity}{2}$
+
+These models are all applied to the test data set and make use of the **confusionMatrix** function from the caret library. We present the corresponding common classification metrics as a kable table to glean more insight regarding the relative strength of each model's performance:
+
+```{r}
+tabularview_all <- data.frame(NN_Model_1, NN_Model_2, NN_Model_3,RF_Model_1, RF_Model_2, RF_Model_3)
+kable(tabularview_all) %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down") %>% column_spec(1, bold = T)
+```
 
 ## Final Model Discussion / Interpretation
 
