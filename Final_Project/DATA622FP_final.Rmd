@@ -49,8 +49,12 @@ require(reshape2) # small multiple density plot
 library(class) # kNN 
 library(rpart) # DT
 library(rpart.plot)# DT
-#library(tensorflow) 
-#install_tensorflow()
+library(data.table)
+library(randomForest) # RF
+library(e1071) #skewness
+library(gbm)
+library(xgboost)      # a faster implementation of gbm
+library(Matrix)
 
 #Utilize customized functions
 plot_corr_matrix <- function(dataframe, significance_threshold){
@@ -242,7 +246,6 @@ Our utilization of the **Boruta** function for feature ranking and selection ind
 With feature importance in mind, we drop the poor predictors from consideration. Dropping these variables also addresses concerns of applicant discrimination (ie. rejection based on `Gender`) and thus we address two concerns with this act of feature selection.
 
 ```{r, include=F}
-library(data.table)
 #Subset data based on predictor strength
 loan <- subset(loan, select = -c(1, 2, 3, 4, 7) ) #drop poor predictors
 #head(loan) #verify
@@ -253,7 +256,10 @@ loan_new2 <- loan
 loan_nn <- loan
 loan_keras <- loan
 loan_knn <- loan
-loan_dt <-  loan
+loan_dt <- loan
+loan_rf <- loan
+loan_GB <- loan
+
 ```
 
 ## Independent Variable Distributions
@@ -877,42 +883,611 @@ paste0("Accuracy of testing data: ", round(sum(diag(tab2))/sum(tab2)*100,2))
 
 From above, we observe our misclassification error and accuracy for test and training data. It appears that this model has performed as well as the prior model and, if we consider model simplicity as well, may be the strongest.
 
-## NN Model Evaluation
+## Back Comparison
 
-To clarify, we revisit performance statistics for the best model from each neural network approach:
+Later, we'll revisit pertinent statistics for our neural network models, but first we'll explore the efficacy of alternatives to a neural network approach to compare and contrast methods. 
 
-```{r, eval = T, echo = F, message = F, warning = F, fig.height = 8, fig.width = 10}
+Being that the focus of this project was on neural networks, the section that follows provides a high level overview of each alternative approach with corresponding code in the Appendix and output statistics in our Overall Model Comparison section.
 
-#Create Kable table to succinctly summarize NN model results
-Model <- c('1', '2', '3')
-Method <- c('nnet', 'keras', 'neural net')
-Var_Num <- c(5, 5, 1)
-Train_Acc <- c(0.843, 0.839, 0.810)
-Test_Acc <- c(0.825, 0.871, 0.871)
+### Decision Tree
 
-output <- cbind(Model, Method, Var_Num, Train_Acc, Test_Acc)
+Decision trees build classification or regression models in the form of a tree structure. Datasets are broken into smaller and smaller subsets along chosen parameters, as the associated decision tree is developed. The result is a tree with nodes and branches. Nodes denote a split point based on the attribute in question while branches denote the corresponding outcome. We start at a “root node”, terminate at “leaf nodes”, and use corresponding lead nodes to provide proportions regarding resulting class labels.
 
-output %>%
-  kbl(caption = "Neural Network Model Comparison") %>%
-  kable_minimal() %>%
-  kable_styling(latex_options = "hold_position")
+During EDA, we'd specified our most important features. We explored these features further (in tabular form), re-confirmed `Credit_History` as our most important feature and retained all remaining features for the simple fact that tree algorithms are immune to multicollinearity.
+
+```{r, include=F}
+#Revisit feature importance
+#boruta_output = Boruta(Loan_Status ~ ., data = loan_dt, doTrace = 0, maxRuns = 1000)  
+#roughFixMod = TentativeRoughFix(boruta_output)
+#importance = attStats(TentativeRoughFix(boruta_output))
+#importance = importance[importance$decision != 'Rejected', c('meanImp', 'decision')]
+#kable(head(importance[order(-importance$meanImp), ]), 
+#      caption = "Feature Importance of Loan Data") %>%
+#  kable_styling(bootstrap_options = "striped", full_width = TRUE)
+
 ```
+
+We then train-test split our data using an 80/20 split, explored a "baseline model" which produced a training accuracy of 87% and a test accuracy of just 74.5%. Thus, we sought to optimize our models performance.
+
+```{r, include=F}
+set.seed(123) #for reproducibility
+
+# Split data into training and testing sets
+sample_data = sample.split(loan_dt, SplitRatio = 0.8)
+train_data <- subset(loan_dt, sample_data == TRUE)
+test_data <- subset(loan_dt, sample_data == FALSE)
+
+
+# Plot tree
+tree_mod <- rpart(Loan_Status ~ ., data = train_data, method="class", 
+                  control = rpart.control(minsplit = 4, 
+                                          minbucket =  2, 
+                                          cp = 0, 
+                                          maxdepth = 6))
+rpart.plot(tree_mod, extra=1, cex=0.8)
+
+```
+
+```{r, include=F}
+train_pred <- predict(tree_mod, train_data, type="class")
+test_pred <- predict(tree_mod, test_data, type="class")
+
+paste("Confusion matrix of Test data")
+table(Predicted = test_pred, Actual = test_data$Loan_Status)
+
+cat('Training Accuracy: ', mean(train_pred == train_data$Loan_Status), '\n',
+   'Test Set Accuracy: ', mean(test_pred == test_data$Loan_Status), sep='')
+
+```
+
+We used cross-validation, alternating between training and test data to increase the precision of our error estimation while determining the optimal tree depth and tuning complexity arguments.
+
+```{r, include=F}
+#Determine optimal tree depth
+set.seed(123) #for reproducibility
+
+bc_tree_cv <- train(Loan_Status ~ ., loan_dt, method="rpart2",
+                 trControl = trainControl(method="cv", number=10),
+                 tuneGrid = expand.grid(maxdepth=c(6)),
+                 control = rpart.control(minsplit = 4,
+                                         minbucket =  2,
+                                         cp = 0))
+bc_tree_cv
+
+```
+
+```{r, include=F}
+set.seed(123) #for reproducibility
+
+bc_tree_cv_md <- train(Loan_Status ~ ., loan_dt, method="rpart2", 
+                       trControl = trainControl(method="cv", number=10),
+                       tuneGrid = expand.grid(maxdepth=1:20),
+                       control = rpart.control(minsplit = 4, 
+                                               minbucket =  2, 
+                                               cp = 0))
+
+best_ix = which.max(bc_tree_cv_md$results$Accuracy)
+bc_tree_cv_md$results[best_ix, ]
+
+```
+
+```{r, include=F}
+#Plot Accuracy vs. Max Tree Depth
+plot(bc_tree_cv_md$results$maxdepth, bc_tree_cv_md$results$Accuracy, ylab = "Accuracy (cross -Validation)", xlab = "Max Tree Depth")
+lines(1:20, bc_tree_cv_md$results$Accuracy)
+abline(v=which.max(bc_tree_cv_md$results$Accuracy), col="red", lty=2, lwd=1)
+
+```
+
+```{r, include=F}
+#Determine optimal tuning complexity parameter
+set.seed(123) #for reproducibility
+
+bc_tree_cv_cp <- train(Loan_Status ~ ., loan_dt, method="rpart", 
+                       trControl = trainControl(method="cv", number=10),
+                       tuneGrid = expand.grid(cp=seq(0, 0.1, 0.001)),
+                       control = rpart.control(minsplit = 4, 
+                                               minbucket =  2, 
+                                               maxdepth = 30))
+
+best_ix = which.max(bc_tree_cv_cp$results$Accuracy)
+bc_tree_cv_cp$results[best_ix, ]
+
+#Plot Accuracy vs. Complexity Parameter
+plot(bc_tree_cv_cp, pch="")
+
+```
+
+We found that a depth of 2 and a cp value of 0.03 provided the highest corresponding accuracy and so we proceeded to finalize our model with optimal input parameters:
+
+```{r}
+tree_mod_final <- rpart(Loan_Status ~ ., data = train_data, method="class", 
+                  control = rpart.control(minsplit = 2, 
+                                          minbucket =  2, 
+                                          cp = 0.03, 
+                                          maxdepth = 2))
+
+rpart.plot(tree_mod_final, extra=1, cex=0.8)
+
+```
+
+The tree appears to confirm our earlier findings regarding `Credit_History` and so we proceed to review its test data performance via confusion matrix and corresponding accuracy:
+
+```{r}
+loanPred <- predict(tree_mod_final, test_data, type = "class")
+
+tab_dt <- table(Predicted = loanPred, Actual = test_data$Loan_Status)
+
+tab_dt
+
+paste0("Accuracy : ", round(sum(diag(tab_dt))/sum(tab_dt) * 100,2))
+
+```
+
+We find that our optimal decision tree model has an accuracy of 76.5% on test data with a total of 48 misclassifications. The model precisely predicts approval while simultaneously mispredicting loan rejection at an overwhelming rate. This may be because of the model's dependence on `Credit_History` and that variable's strength in predicting approval and weakness in predicting rejection. *We'll revisit corresponding statistics in the Overall Model Comparison section.*
+
+### Random Forest
+
+As the next natural progression from decision trees, we move on to modeling via random forest (a collection of trees).
+
+Random forests are one the most popular machine learning algorithms. They can be used for classification or regression, deal with a large number of features, and generally are so successful because they provide a good predictive performance, low incidence of over-fitting, and easy interpret-ability.
+
+We train-test split our dataset using an 80/20 split, we then used the `randomforest` package to explore a simple random forest (using all variables as predictors), we visited a plot of the class error rates, observed that as the number of trees increases the error rates stabilize and the Y classifier approaches 0, we then visited the corresponding confusion matrix for test data:
+
+```{r, include=F}
+set.seed(66)
+
+# Split data into training and testing sets
+sample_data_rf = sample.split(loan_rf, SplitRatio = 0.8)
+train_data_rf <- subset(loan_rf, sample_data_rf == TRUE)
+test_data_rf <- subset(loan_rf, sample_data_rf == FALSE)
+
+# fit a simple Random Forest model with training data
+model_rf <- randomForest(Loan_Status ~ .,
+                           data=train_data_rf)
+# display model details
+#model_rf
+
+#Error rate plot
+plot(model_rf, main = "Error rate of random forest")
+legend("topright", cex =1, legend=colnames(model_rf$err.rate), lty=c(1,2,3), col=c(1,2,3))
+```
+
+```{r}
+set.seed(66)
+
+pred_rf <- predict(model_rf, test_data_rf, type="class")
+tab_rf <- table(Predicted = pred_rf, Actual = test_data_rf$Loan_Status)
+tab_rf
+pred_rf <- as.factor(pred_rf)
+test_data_rf$Loan_Status <- as.factor(test_data_rf$Loan_Status)
+paste0("Accuracy : ",round(sum(diag(tab_rf))/sum(tab_rf)*100,2))
+
+RF_Model_1 <- confusionMatrix(pred_rf, test_data_rf$Loan_Status)$byClass
+acc1 <- confusionMatrix(pred_rf, test_data_rf$Loan_Status)$overall['Accuracy']
+RF_Model_1 <- data.frame(RF_Model_1)
+RF_Model_1 <- rbind("Accuracy" = acc1, RF_Model_1)
+```
+
+We observed an accuracy of ~87.4% and proceeded to attempt to optimize the model further.
+
+We plotted feature importance to observe those that most vs. least affected the model's predictive capability, we tuned the number of trees to minimize the error rate, created a second model (`RF_Model_2`) observed that the accuracy had actually decreased by ~1% on test data.
+
+```{r, include=F}
+varImpPlot(model_rf, main = "Feature Importance of RF Model")
+
+m_opt_ntrees <- which.min(model_rf$err.rate[,'OOB'])
+m_opt_err_rate <- min(model_rf$err.rate[,'OOB'])
+
+cat("Optimal Number of Trees: ", m_opt_ntrees, "\n",
+    "Minimum Error Rate:      ", m_opt_err_rate, sep="")
+
+set.seed(66)
+
+#Build model
+model_rf_2 <- randomForest(Loan_Status ~ .,
+                           data=train_data_rf, ntree=m_opt_ntrees, importance=TRUE)
+
+#Confusion matrix and accuracy statistics - test data
+pred_rf_2 <- predict(model_rf_2, test_data_rf, type="class")
+tab_rf_2 <- table(Predicted = pred_rf_2, Actual = test_data_rf$Loan_Status)
+tab_rf_2
+pred_rf_2 <- as.factor(pred_rf_2)
+paste0("Accuracy : ",round(sum(diag(tab_rf_2))/sum(tab_rf_2)*100,2))
+
+RF_Model_2 <- confusionMatrix(pred_rf_2, test_data_rf$Loan_Status)$byClass
+acc2 <- confusionMatrix(pred_rf_2, test_data_rf$Loan_Status)$overall['Accuracy']
+RF_Model_2 <- data.frame(RF_Model_2)
+RF_Model_2 <- rbind("Accuracy" = acc2, RF_Model_2)
+```
+
+We then tuned on `mtry` and `ntree`, created another model (`RF_Model_3`), and observed that its accuracy for test data was 86.89% and **thus our first model (`RF_Model_1`), the model without any optimization attempts, appears to have been our strongest.**
+
+```{r, include=F}
+oob_acc_list <- c()
+opt_ntree_list <- c()
+
+for(i in 1:29){
+  set.seed(66)
+  temp_mod <- randomForest(Loan_Status ~ .,train_data_rf , ntree=500, importance=TRUE, mtry=i)
+  oob_acc_list <- c(oob_acc_list, min(temp_mod$err.rate[,'OOB']))
+  opt_ntree_list <- c(opt_ntree_list, which.min(temp_mod$err.rate[,'OOB']))
+}
+
+opt_mtry <- which.min(oob_acc_list)
+opt_ntree <- opt_ntree_list[opt_mtry]
+min_oob_acc <- min(oob_acc_list)
+
+cat("Optimal Value of mtry:  ", opt_mtry, "\n",
+    "Optimal Value of ntree: ", opt_ntree, "\n",
+    "Minimum OOB Accuracy:   ", min_oob_acc, sep="")
+
+plot(1:29, oob_acc_list, xlab="Value of mtry", ylab="Minimum OOB Accuracy Score")
+lines(1:29, oob_acc_list)
+abline(v=which.min(oob_acc_list), col="red", lty=2, lwd=1)
+
+set.seed(66)
+
+#Build model
+model_rf_3 <- randomForest(Loan_Status ~ .,
+                           data=train_data_rf, ntree=opt_ntree, mtry=opt_mtry, importance=TRUE)
+
+#Confusion matrix and accuracy - test data
+pred_rf_3 <- predict(model_rf_3, test_data_rf, type="class")
+tab_rf_3 <- table(Predicted = pred_rf_3, Actual = test_data_rf$Loan_Status)
+tab_rf_3
+pred_rf_3 <- as.factor(pred_rf_3)
+paste0("Accuracy : ",round(sum(diag(tab_rf_3))/sum(tab_rf_3)*100,2))
+
+RF_Model_3 <- confusionMatrix(pred_rf_3, test_data_rf$Loan_Status)$byClass
+acc3 <- confusionMatrix(pred_rf_3, test_data_rf$Loan_Status)$overall['Accuracy']
+RF_Model_3 <- data.frame(RF_Model_3)
+RF_Model_3 <- rbind("Accuracy" = acc3, RF_Model_3)
+```
+
+### kNN
+
+The KNN algorithm hinges on the idea that similar data will be near one another. When applying KNN, the distance between data points are used to classify data. Those nearer one another are “batched” together. The amount of batches we see and the distance between points is determined by the k value we select:
+
+* Smaller k –> fewer batches and larger distance between “like” points.
+* Larger k –> more batches and smaller distance between “like” points.
+
+Due to the simplicity of calculations involved and ease of interpretability of the result, KNN is a popular classifier. For our purposes, we’re going to apply the K-nearest neighbor algorithm to the loan dataset to predict the `Loan_Status` variable.
+
+We use the `knn` function from the class package to create a 3-Nearest Neighbors model for the loan dataset.
+
+We convert categorical variables to numerical, apply standard scaling to bring each variable in the dataset to have a mean of 0 and standard deviation of 1 (using $z_i= \frac {x_i−\bar x}{s_x}$)m and then train-test split our dataset.
+
+We explore model performance using actual and scaled data, vary k from a range of 1 to 100 to determine the optimal value, select our final model based on which was more accurate (scaled was more accurate than unscaled)
+
+```{r, include=F}
+set.seed(26) #ensure reproducibility
+
+loan_knn <-  loan_knn[, c(1, 3, 4, 2, 6, 5)]
+
+# Convert Credit_History numeric type
+loan_knn$Credit_History <- as.numeric(loan_knn$Credit_History)
+
+# Change Variables values
+loan_knn$Self_Employed <- ifelse(loan_knn$Self_Employed == "Yes", 1, 0)
+loan_knn$Loan_Status <- ifelse(loan_knn$Loan_Status=="Y", 1, 0)
+
+loan_knn$Property_Area <- case_when(
+  loan_knn$Property_Area == "Semiurban" ~ 2,
+  loan_knn$Property_Area == "Urban" ~ 1,
+  loan_knn$Property_Area == "Rural" ~ 0,
+)
+
+# Partition
+ind <- sample(2, nrow(loan_knn), replace = T, prob = c(.8, .2))
+training_knn <- loan_knn[ind==1,1:5]
+testing_knn <- loan_knn[ind==2, 1:5]
+trainingtarget_knn <- loan_knn[ind==1, 6]
+testingtarget_knn <- loan_knn[ind==2, 6]
+
+# unscaled data
+train <- loan_knn[ind==1,1:5]
+test <- loan_knn[ind==2, 1:5]
+
+# Normalize scales data
+m <- colMeans(training_knn)
+s <- apply(training_knn, 2, sd)
+training_knn <- scale(training_knn, center = m, scale = s)
+testing_knn <- scale(testing_knn, center = m, scale = s)
+
+#Determine optimal k
+train_acc <- c()
+valid_acc <- c()
+train_acc_sc <- c()
+valid_acc_sc <- c()
+
+k_range <- 1:100
+for (i in k_range) {
+  #  Unscaled data
+  train_pred_a <- knn(train, train, trainingtarget_knn, k=i)
+  train_acc <- c(train_acc, mean(train_pred_a == trainingtarget_knn))
+  
+  valid_pred_a <- knn(train, test, trainingtarget_knn, k=i)
+  valid_acc <- c(valid_acc, mean(valid_pred_a == testingtarget_knn))
+  
+  # Standard Scaling
+  train_pred <- knn(training_knn, training_knn, trainingtarget_knn, k=i)
+  train_acc_sc <- c(train_acc_sc, mean(train_pred == trainingtarget_knn))
+  
+  valid_pred <- knn(training_knn, testing_knn, trainingtarget_knn, k=i)
+  valid_acc_sc <- c(valid_acc_sc, mean(valid_pred == testingtarget_knn))
+}
+print(max(valid_acc))
+print(max(valid_acc_sc))
+
+#Training and Validation Curves for UNSCALED data
+plot(k_range, train_acc, pch='.', ylim=c(0.55, 1), col='salmon', ylab="")
+lines(k_range, train_acc, lwd=2, col='salmon')
+lines(k_range, valid_acc, lwd=2, col='cornflowerblue')
+legend(65, 1, legend=c("Training Acc", "Validation Acc"),
+       col=c("salmon", "cornflowerblue"), lty=1, lwd=2, cex=0.8)
+
+#Training and Validation Curves for SCALED data
+plot(k_range, train_acc_sc, pch='.', ylim=c(0.55, 1), col='salmon', ylab="")
+lines(k_range, train_acc_sc, lwd=2, col='salmon')
+lines(k_range, valid_acc_sc, lwd=2, col='cornflowerblue')
+legend(65, 1, legend=c("Training Acc", "Validation Acc"),
+       col=c("salmon", "cornflowerblue"), lty=1, lwd=2, cex=0.8)
+
+#Select optimal k for UNSCALED data
+acc <- which.max(valid_acc)
+
+#Confusion matrix and accuracy statistics for UNSCALED data - weaker model
+train_pred <- knn(train, train, trainingtarget_knn, k=acc)
+train_acc <- mean(train_pred == trainingtarget_knn)
+  
+valid_pred <- knn(train, test, trainingtarget_knn, k=acc)
+valid_acc <- mean(valid_pred == testingtarget_knn)
+
+cat('Training Accuracy:   ', train_acc, '\n',
+    'Validation Accuracy: ', valid_acc, sep='')
+
+tab_knn <-  table(Predicted = valid_pred, Actual = testingtarget_knn)
+tab_knn
+
+```
+
+```{r}
+set.seed(26) #ensure reproducibility
+
+#Select optimal k for SCALED data
+acc_sc <- which.max(valid_acc_sc)
+#acc_sc
+
+#Confusion matrix and accuracy for scaled data model with k = 10
+train_pred <- knn(training_knn, training_knn, trainingtarget_knn, k=acc_sc)
+train_acc <- mean(train_pred == trainingtarget_knn)
+  
+valid_pred <- knn(training_knn, testing_knn, trainingtarget_knn, k=acc_sc)
+valid_acc <- mean(valid_pred == testingtarget_knn)
+
+cat('Training Accuracy:   ', train_acc, '\n',
+    'Validation Accuracy: ', valid_acc, sep='')
+
+tab_knn_sc <-  table(Predicted = valid_pred, Actual = testingtarget_knn)
+tab_knn_sc
+```
+
+From above we observe a relatively strong prediction rate for a approvals and a near 50/50 split when it comes to predicting rejections which is quite low. It would appear that this is a sub-optimal model, and it may be because our rejections require more nuanced detection methods than grouping based on its nearest neighbors.
+
+### Gradient Boosting
+
+Boosting is a method for creating an ensemble, or a combination of machine learning models. *Gradient* boosting relies on the belief that the best possible next model, when combined with prior models, reduces how often we misclassify our data. 
+
+It's heralded as one of the most powerful techniques for building predictive models and offers numerous options for implementation. We'll make use of the **XGBoost** (eXtreme Gradient Boosting) distributed gradient library due to its promise of flexibility, portability, and efficiency.
+
+For our purposes, we're dealing with a categorical dependent variable, and will build a Gradient Boosting model from the loan approval dataset to provide `Loan_Status` predictions (ie. Approve or Reject).
+
+To prepare our data for Gradient Boost modeling, we verify our numeric variable's skewness, perform a **log()** transform on skewed numeric variables, transform categoric variables to a numeric range (starting at 0), train-test split our data, create train and test matrices for the one hot encoding of variables, build our model and verify the confusion matrix and misclassification error rates:
+
+```{r, include=F}
+#Pre-process data: normalize independent numeric vars
+
+#head(loan_GB) #revisit data
+
+#calculate skewness prior to transformation
+skewness(loan$TotalIncome, na.rm = TRUE)
+skewness(loan$LoanAmount, na.rm = TRUE)
+
+#transformation: account for outliers with log transform
+loan$TotalIncome <- log10(loan$TotalIncome)
+loan$LoanAmount <- log10(loan$LoanAmount)
+
+#calculate skewness after transformation
+skewness(loan$TotaltIncome, na.rm = TRUE) #NaN
+skewness(loan$LoanAmount, na.rm = TRUE) #drastically reduced
+
+# Convert Credit_History to numeric type
+loan_GB$Credit_History <- as.numeric(loan_GB$Credit_History) #0, 1
+
+# Change Variables values
+loan_GB$Self_Employed <- ifelse(loan_GB$Self_Employed=="Yes", 1, 0) #0,1
+loan_GB$Loan_Status <- ifelse(loan_GB$Loan_Status=="Y", 1, 0) #0,1
+loan_GB$Property_Area <- case_when( #0,1,2
+  loan_GB$Property_Area == "Semiurban" ~ 2,
+  loan_GB$Property_Area == "Urban" ~ 1,
+  loan_GB$Property_Area == "Rural" ~ 0,
+)
+
+#Convert Loan_Status to factor
+#loan_GB$Loan_Status <- as.factor(loan_GB$Loan_Status)
+
+head(loan_GB) #verify all numeric inputs
+
+#Partition data
+set.seed(1234)
+
+#loan_GB
+ind <- sample(2, nrow(loan_GB), replace = TRUE, prob = c(0.75, 0.25))
+train_GB <- loan_GB[ind == 1, ]
+test_GB <- loan_GB[ind == 2, ]
+
+#dim(train_GB) #457 x 6
+#dim(test_GB) #157 x 6
+
+#Create train, test matrices - one hot encoding for factor variables
+trainm <- sparse.model.matrix(Loan_Status ~ ., data = train_GB)
+#head(trainm)
+train_label <- train_GB[,"Loan_Status"]
+train_matrix <- xgb.DMatrix(data = as.matrix(trainm),label = train_label )
+
+testm <- sparse.model.matrix(Loan_Status ~ ., data = test_GB)
+test_label <- test_GB[,"Loan_Status"]
+test_matrix <- xgb.DMatrix(data = as.matrix(testm),label = test_label )
+
+```
+
+```{r, include=F}
+#Parameters
+nc <- length(unique(train_label)) #number of classes
+xgb_params <- list("objective" = "multi:softprob",
+                   "eval_metric" = "mlogloss",
+                   "num_class" = nc)
+watchlist <- list(train = train_matrix, test = test_matrix)
+
+#extreme Gradient Boosting Model
+GB_model <- xgb.train(params = xgb_params,
+                      data = train_matrix,
+                      nrounds = 28, #run 100 iterations 1st then update based on test error value
+                      watchlist = watchlist,
+                      eta = 0.1, seed = 1234
+                      ) #inc eta value increased accuracy by 1
+
+#error plot
+#e <- data.frame(GB_model$evaluation_log)
+#plot(e$iter, e$train_mlogloss)
+#lines(e$iter, e$test_mlogloss, col = 'red')
+
+#determine when test error was lowest
+#min(e$test_mlogloss) #0.480478 lowest error
+#e[e$test_mlogloss == 0.480478,] #28th iteration
+```
+
+```{r}
+#prediction and confusion matrix from TRAIN data
+p_train <- predict(GB_model, newdata = train_matrix)
+pred_train <- matrix(p_train, nrow = nc, ncol = length(p_train)/nc) %>%
+    t() %>% #matrix transpose
+    data.frame() %>%
+    mutate(label = train_label, max_prob = max.col(.,"last")-1)
+
+tab_train <- table(Prediction = pred_train$max_prob, Actual = pred_train$label)
+print(tab_train)
+print(paste('Misclassification Error with Train data', round(1 - sum(diag(tab_train))/sum(tab_train),3))) #0.112
+
+#prediction and confusion matrix from TEST data
+p_test <- predict(GB_model, newdata = test_matrix)
+pred_test <- matrix(p_test, nrow = nc, ncol = length(p_test)/nc) %>%
+    t() %>% #matrix transpose
+    data.frame() %>%
+    mutate(label = test_label, max_prob = max.col(.,"last")-1)
+
+tab_test <- table(Prediction = pred_test$max_prob, Actual = pred_test$label)
+print(tab_test)
+print(paste('Misclassification Error with Test data', round(1 - sum(diag(tab_test))/sum(tab_test),3))) #0.178
+
+#feature importance
+imp <- xgb.importance(colnames(train_matrix), model=GB_model)
+print(imp) #higher Gain means higher feature importance
+
+```
+
+From above we note 0.112 and 0.178 misclassification error rates (the opposite of accuracy) on training and test data respectively. This a strong performance although not quite as strong as the RF models we'd explored earlier and so we attempt to optimize.
+
+From our feature importance scores, we observed that `Credit_History`, `TotalIncome`, and `LoanAmount` had the highest `Gain` scores and so we omitted all other features in our second model. After adapting our matrices, building our model, and optimizing input parameters (ie. `nrounds`), we found that selecting features *slightly reduced* our model accuracy and so our first model outperformed our second.
+
+```{r, include=F}
+#Create train, test matrices - one hot encoding for factor variables
+trainm2 <- sparse.model.matrix(Loan_Status ~ Credit_History + LoanAmount + TotalIncome, data = train_GB) 
+#head(trainm2)
+train_label2 <- train_GB[,"Loan_Status"]
+train_matrix2 <- xgb.DMatrix(data = as.matrix(trainm2),label = train_label2 )
+
+testm2 <- sparse.model.matrix(Loan_Status ~ Credit_History + LoanAmount + TotalIncome, data = test_GB) 
+test_label2 <- test_GB[,"Loan_Status"]
+test_matrix2 <- xgb.DMatrix(data = as.matrix(testm2),label = test_label2 )
+
+#Parameters
+nc2 <- length(unique(train_label2)) #number of classes
+xgb_params2 <- list("objective" = "multi:softprob",
+                   "eval_metric" = "mlogloss",
+                   "num_class" = nc2)
+watchlist2 <- list(train = train_matrix2, test = test_matrix2)
+
+#extreme Gradient Boosting Model
+GB_model2 <- xgb.train(params = xgb_params2,
+                      data = train_matrix2,
+                      nrounds = 23, #run 100 iterations 1st then update based on test error value
+                      watchlist = watchlist2,
+                      eta = 0.1, seed = 606 
+                      ) #inc eta value increased accuracy by 1
+
+#error plot
+#e2 <- data.frame(GB_model2$evaluation_log)
+#plot(e2$iter, e2$train_mlogloss)
+#lines(e2$iter, e2$test_mlogloss, col = 'red')
+
+#determine when test error was lowest
+#min(e2$test_mlogloss) #0.481189 lowest error
+#e2[e2$test_mlogloss == 0.481189,] #23rd iteration
+
+#prediction and confusion matrix from train data
+p_train2 <- predict(GB_model2, newdata = train_matrix2)
+pred_train2 <- matrix(p_train2, nrow = nc2, ncol = length(p_train2)/nc2) %>%
+    t() %>% #matrix transpose
+    data.frame() %>%
+    mutate(label = train_label2, max_prob = max.col(.,"last")-1)
+
+tab_train2 <- table(Prediction = pred_train2$max_prob, Actual = pred_train2$label)
+print(tab_train2)
+print(paste('Misclassification Error with Train data', round(1 - sum(diag(tab_train2))/sum(tab_train2),3)))
+
+#prediction and confusion matrix from test data
+p_test2 <- predict(GB_model2, newdata = test_matrix2)
+pred_test2 <- matrix(p_test2, nrow = nc2, ncol = length(p_test2)/nc2) %>%
+    t() %>% #matrix transpose
+    data.frame() %>%
+    mutate(label = test_label2, max_prob = max.col(.,"last")-1)
+
+tab_test2 <- table(Prediction = pred_test2$max_prob, Actual = pred_test2$label)
+print(tab_test2)
+print(paste('Misclassification Error with Test data', round(1 - sum(diag(tab_test2))/sum(tab_test2),3)))
+```
+
+With a rather in-depth exploration of alternative models under our belt, we proceed to compare the strongest performing of our models: random forest and neural network.
 
 ***
 
-# Back Comparison
 
-At this point, we proceed to compare our neural network models against the performance metrics of a decision tree, random forest, logistic regression, XG boost, and K means model ...
+# Overall Model Comparison
 
-## DT
+LEFT OFF HERE: create Kable table for NN, alt, and all models. Select the best model. Proceed to compare this model vs. best performing others (RF, DT, XGB ...).
 
-## RF
+Metric intro / discussion
 
-## Logistic Regression
+Table
 
-## XG Boost
+Interpretation
 
-## K means
+***
 
 
-LEFT OFF HERE: add Feature Selection, Confusion Matrix, etc. Create Kable table for NN models. Compare and interpret. Select the best model. Proceed to compare this model vs. best performing others (RF, DT, XGB ...).
+# Conclusion
+
+TBD
+
+***
+
+
+# Appendix
+
+## Non-NN Classification Approaches
+
+
+
+## All `R` Code
