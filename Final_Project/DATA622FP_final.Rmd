@@ -119,7 +119,8 @@ The power of a neural network lies in its ability to fine-tune upon countless it
 
 ## Our Approach
 
-We'll start by (re) exploring and preparing the loan dataset, progress to building our neural network model, and then compare and contrast `loan approval status` prediction accuracy for our neural network model vs. decision tree, random forest, and gradient boosting models.
+We'll explore and prepare the loan dataset, train multiple neural network and alternative classification  models and then compare and contrast the top performing model from each group in its ability to accurately classify `Loan_Status` (approval/ rejection).
+
 
 ***
 
@@ -228,12 +229,12 @@ We varied the threshold value for our correlation matrix and found that, aside f
 #NOTE: COMMENTED OUT BELOW DUE TO LONG COMPILATION TIME. UNCOMMENT BEFORE FINAL SUBMISSION.
 
 # Perform Boruta search
-#boruta_output <- Boruta(Loan_Status ~ ., data=na.omit(loan), doTrace=0, maxRuns = 1000)
+boruta_output <- Boruta(Loan_Status ~ ., data=na.omit(loan), doTrace=0, maxRuns = 1000)
 #Get significant variables including tentatives
-#boruta_signif <- getSelectedAttributes(boruta_output, withTentative = TRUE)
+boruta_signif <- getSelectedAttributes(boruta_output, withTentative = TRUE)
 #print(boruta_signif)
 # Plot variable importance
-#plot(boruta_output, cex.axis=.7, las=2, xlab="", main="Variable Importance")
+plot(boruta_output, cex.axis=.7, las=2, xlab="", main="Variable Importance")
 
 ```
 
@@ -728,7 +729,7 @@ plot(model_keras_train2)
 
 Our loss visualization y axis covers a different range and it appears that our training loss is around ~0.15 while our validation loss stabilizes around ~0.17. When we consider that our training set was reduced in size this makes sense.
 
-Our accuracy visualization's y axis also covers a different range and and we observe that training and validation start with low accuracies, follow each other with training accuracy slightly higher (0.825 vs. 0.82) and conclude with training accuracy and validation accuracy criss-crossing twice before epoch 100.
+Our accuracy visualization's y axis also covers a different range and and we observe that training and validation start with low accuracies, follow each other with validation slightly higher (0.825 vs. 0.81) and conclude with training accuracy and validation accuracy crossing paths ~75 epochs where then our training accuracy became higher.
 
 We explore further via evaluation metrics and confusion matrix:
 
@@ -759,7 +760,7 @@ NN_Model_2 <- data.frame(NN_Model_2)
 NN_Model_2 <- rbind("Accuracy" = acc1, NN_Model_2)
 ```
 
-Our accuracy on (unseen) test data improved from 86% to greater than 87%. Additionally, although the model still performs better in predicting approvals, its rejection predictions improved from 14 misclassifications to 13 rejections.
+The impact on (unseen) test data accuracy is noted above and we pay particular attention to the improvement in rejection misclassifications from 14 to 13.
 
 
 ## Neural Network #3 (neural net)
@@ -820,7 +821,7 @@ plot(n1, rep = "best")
 
 ```
 
-The plot of our neural network above shows 5 input nodes, 1 hidden layer with 1 node, and 1 output node. This is *by far* the simplest neural network we've visited thus far.
+The plot of our neural network above shows 5 input nodes, 1 hidden layer with 1 node, and 1 output node.  The simplest neural network we've visited thus far.
 
 After this point, we verified the predictive accuracy of our model via node output calculations with sigmoid activation function. *Note: corresponding code has been included in the Appendix.*
 
@@ -898,21 +899,34 @@ acc1 <- confusionMatrix(as.factor(pred2), as.factor(testing_nn$Loan_Status))$ove
 NN_Model_3 <- data.frame(NN_Model_3)
 NN_Model_3 <- rbind("Accuracy" = acc1, NN_Model_3)
 
-#Tabular view of model performance: NN_Model_2 is the strongest
-#tabularview <- data.frame(NN_Model_1, NN_Model_2, NN_Model_3)
-#tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
-
 ```
 
 From above, we observe our misclassification error and accuracy for test and training data. It appears that this model has performed as well as the prior model and, if we consider model simplicity as well, may be the strongest.
 
-## Back Comparison
+## NN Model Evaluation
 
-Later, we'll revisit pertinent statistics for our neural network models, but first we'll explore the efficacy of alternatives to a neural network approach to compare and contrast methods. 
+Next, we re-visit the performance of all of our neural network models to determine which approach produced the strongest model.
 
-Being that the focus of this project was on neural networks, the section that follows provides a high level overview of each alternative approach with corresponding code in the Appendix and output statistics in our Overall Model Comparison section.
+We pull all models into a dataframe and output there performance metrics side-by-side:
 
-### Decision Tree
+```{r}
+#Tabular view of model performance:
+tabularview <- data.frame(NN_Model_1, NN_Model_2, NN_Model_3)
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+```
+
+We see that `NN_Model_2` and `NN_Model_3` compare closely for numerous metrics. Being that we're dealing with an unbalanced set (more approvals predicted than rejections), we use the `Balanced Accuracy` metric as our determining factor and see that `NN_Model_2` (keras) is our strongest. 
+
+Later, we’ll provide an in-depth interpretation of this model's statistics vs. those of our alternative classification approaches.
+
+***
+
+
+# Alternative Classification Approaches
+
+Later, we'll revisit pertinent statistics for our neural network models, but first we'll explore the efficacy of alternatives to a neural network approach to compare and contrast methods. Being that the focus of this project was on neural networks, the section that follows provides a high level overview of each alternative approach (with corresponding code in the Appendix), output statistics near the conclusion, and a more thorough analysis of output statistics in our Model Comparison section.
+
+## Decision Tree
 
 Decision trees build classification or regression models in the form of a tree structure. Datasets are broken into smaller and smaller subsets along chosen parameters, as the associated decision tree is developed. The result is a tree with nodes and branches. Nodes denote a split point based on the attribute in question while branches denote the corresponding outcome. We start at a “root node”, terminate at “leaf nodes”, and use corresponding lead nodes to provide proportions regarding resulting class labels.
 
@@ -1049,7 +1063,7 @@ paste0("Accuracy : ", round(sum(diag(tab_dt))/sum(tab_dt) * 100,2))
 
 We find that our optimal decision tree model has an accuracy of 76.5% on test data with a total of 48 misclassifications. The model precisely predicts approval while simultaneously mispredicting loan rejection at an overwhelming rate. This may be because of the model's dependence on `Credit_History` and that variable's strength in predicting approval and weakness in predicting rejection. *We'll revisit corresponding statistics in the Overall Model Comparison section.*
 
-### Random Forest
+## Random Forest
 
 As the next natural progression from decision trees, we move on to modeling via random forest (a collection of trees).
 
@@ -1168,11 +1182,13 @@ RF_Model_3 <- data.frame(RF_Model_3)
 RF_Model_3 <- rbind("Accuracy" = acc3, RF_Model_3)
 
 #Tabular view of model performance: RF_Model_1 is the strongest
-#tabularview <- data.frame(RF_Model_1, RF_Model_2, RF_Model_3)
-#tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
+tabularview <- data.frame(RF_Model_1, RF_Model_2, RF_Model_3)
+tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("striped", "hover", "condensed", "responsive"),latex_options="scale_down")
 ```
 
-### kNN
+We visit a tabular output for the performance metrics of `RF_Model_1` vs `RF_Model_2` and `RF_Model_3` and confirm that `RF_Model_1` was the strongest. We only visited the tabular output for our random forest models because they were *by far* the strongest performing alternative approaches to classification and we had to decipher between the models as to which was the strongest. *The corresponding comparison table's code is available in the Appendix.*
+
+## kNN
 
 The KNN algorithm hinges on the idea that similar data will be near one another. When applying KNN, the distance between data points are used to classify data. Those nearer one another are “batched” together. The amount of batches we see and the distance between points is determined by the k value we select:
 
@@ -1302,7 +1318,7 @@ tab_knn_sc
 
 From above we observe a relatively strong prediction rate for a approvals and a near 50/50 split when it comes to predicting rejections which is quite low. It would appear that this is a sub-optimal model, and it may be because our rejections require more nuanced detection methods than grouping based on its nearest neighbors.
 
-### Gradient Boosting
+## Gradient Boosting
 
 Boosting is a method for creating an ensemble, or a combination of machine learning models. *Gradient* boosting relies on the belief that the best possible next model, when combined with prior models, reduces how often we misclassify our data. 
 
@@ -1517,22 +1533,34 @@ tabularview %>%  kableExtra::kbl() %>% kable_styling(bootstrap_options = c("stri
 
 ```
 
-LEFT OFF HERE: Discuss how NN outperformed all others but RF outperformed NN ... Why might that be?
+First, it's worth noting that the (keras) neural network model from above outperformed all corresponding alternative approaches to classification. Thus, there's certainly merit to the strength and capability of a neural network.
+
+With that said, we consult the above table and observe that while both models performed well and had close statistics across the board, `RF_Model_1` outperformed `NN_Model_2` for all metrics aside from Neg Pred Value. It appears that `NN_Model_2` is slightly more accurate at predicting loan rejections, but other than that and especially when we consider that we're dealing with an unbalanced dataset, `RF_Model_1` would be the preferred model.
 
 ***
 
 
 # Conclusion
 
-TBD
+We explored `nnet`, `keras` and `neuralnet` as neural network approaches. Our assumption was that the top performing neural network model would be our strongest model. This assumption was based in our hearing a lot about the advantages and applications of deep learning models. In particular, we thought that backpropagation as well as the ability to adapt hidden layers to further improve performance would lead to a major performance advantage.
+
+Our strongest neural network model outperformed all alternative models by a significant margin ... aside from random forests. The accuracies and balanced accuracies were quite close but our strongest random forest model edged our strongest neural network model by a slight margin. 
+
+This surprised our entire group considering that we'd applied random forest, decision tree, and gradient boosting models in a past assignment to the same dataset and had the random forest model perform the worst and the gradient boosting model perform the best.
+
+We explored and prepared the data in a different manner this time though. 
+
+We selected only pertinent variables and we combined our incomes to create a `TotalIncome` variable. The data preparation we'd done as well as our use of set seeds and various arguments for the methods we used within each model likely played a role. With just a couple of slight model or data preparation changes we may have seen a different outcome. And this was our largest lesson learned.
+
+When an approach is lauded, mystical, and popular, that doesn't necessarily mean that its applicable in every situation. There is no "one size fits all" in Data Science. In this case the Random Forest model may have performed better because of the data at hand, the way we applied our methods, or because it was simply most advantageous in this particular situation. If we were to apply each model with different set seeds, the accuracies may have varied and we may have come to a different conclusion, and that's the beauty of Data Science.
+
+There's much to be learned.
 
 ***
 
 
-# Appendix
+# Appendix with Code
 
-## Non-NN Classification Approaches
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
 
-
-
-## All `R` Code
+```
